@@ -154,11 +154,11 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
+        return jsonify({'success': False, 'error': 'No file uploaded'})
     
     file = request.files['file']
     if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
+        return jsonify({'success': False, 'error': 'No file selected'})
     
     if file and file.filename.endswith('.csv'):
         filename = secure_filename(file.filename)
@@ -189,41 +189,54 @@ def upload_file():
             precision = tp / (tp + fp) if (tp + fp) > 0 else 0
             recall = tp / (tp + fn) if (tp + fn) > 0 else 0
             
+            # FIXED: Convert alerts to match HTML expected structure
             alerts_data = []
-            for alert in enhanced_alerts[:50]:
+            for alert in enhanced_alerts[:50]:  # Limit to 50 alerts
+                # Convert probability to decimal for sorting
+                confidence_decimal = float(alert['fraud_probability'])
+                
                 alert_data = {
                     'record_id': int(alert['record_id']),
-                    'probability': f"{alert['fraud_probability']:.1%}",
+                    'confidence': confidence_decimal,  # Use decimal for sorting
                     'amount': f"${alert['raw_data'].get('amount', 0):.2f}",
                     'category': alert['raw_data'].get('category', 'Unknown'),
-                    'risk_factors': int(alert['risk_factors']),
-                    'confidence': f"{alert['confidence_score']:.1%}",
-                    'justifications': alert['advanced_justifications'],
                     'customer_id': alert['raw_data'].get('customer', 'Unknown'),
                     'merchant_id': alert['raw_data'].get('merchant', 'Unknown'),
-                    'step': str(alert['raw_data'].get('step', 'Unknown'))
+                    'step': str(alert['raw_data'].get('step', 'Unknown')),
+                    'risk_factors': f"{alert['risk_factors']} risk factors detected",
+                    'justifications': [
+                        {
+                            'title': j.get('title', 'Risk Factor').replace('🎯', '').replace('💰', '').replace('⚡', '').replace('🆕', '').replace('📈', '').strip(),
+                            'description': j.get('description', ''),
+                            'strength': j.get('strength', 0.5),
+                            'risk_level': j.get('risk_level', 'MEDIUM')
+                        }
+                        for j in alert.get('advanced_justifications', [])
+                    ]
                 }
                 alerts_data.append(alert_data)
             
+            # FIXED: Dashboard data with correct field names
             dashboard_data = {
-                'total_transactions': int(len(df)),
-                'fraud_cases': int(sum(y_true)),
-                'fraud_rate': f"{sum(y_true)/len(df):.2%}",
-                'alerts_generated': int(len(enhanced_alerts)),
-                'fraud_caught': int(tp),
-                'false_alerts': int(fp),
-                'missed_fraud': int(fn),
-                'precision': f"{precision:.1%}",
                 'recall': f"{recall:.1%}",
+                'precision': f"{precision:.1%}",
+                'fraud_caught': int(tp),
+                'fraud_cases': int(sum(y_true)),
+                'alerts_generated': int(len(enhanced_alerts)),
+                'false_alerts': int(fp),
                 'alert_efficiency': f"{tp/len(enhanced_alerts):.1%}" if enhanced_alerts else "0%"
             }
             
-            return jsonify({'success': True, 'alerts': alerts_data, 'dashboard': dashboard_data})
+            return jsonify({
+                'success': True, 
+                'alerts': alerts_data, 
+                'dashboard': dashboard_data
+            })
             
         except Exception as e:
-            return jsonify({'error': f'Processing error: {str(e)}'}), 500
+            return jsonify({'success': False, 'error': f'Processing error: {str(e)}'})
     
-    return jsonify({'error': 'Invalid file type'}), 400
+    return jsonify({'success': False, 'error': 'Invalid file type'})
 
 if __name__ == '__main__':
     # Create upload folder if it doesn't exist
@@ -232,4 +245,5 @@ if __name__ == '__main__':
     
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
+
     app.run(host='0.0.0.0', port=port, debug=False)
