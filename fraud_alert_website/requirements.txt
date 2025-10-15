@@ -1,6 +1,5 @@
-Flask==2.3.3
-Werkzeug==2.3.7
---find-links https://download.pytorch.org/whl/torch_stable.html
-pandas==1.5.3
-numpy==1.21.6
-requests==2.28.2
+Flask
+Werkzeug
+pandas
+numpy
+requests
