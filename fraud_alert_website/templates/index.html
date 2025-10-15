@@ -208,55 +208,56 @@
         }
 
         function displayAlerts(alerts) {
-            const highRiskContainer = document.getElementById('highRiskAlerts');
-            const lowRiskContainer = document.getElementById('lowRiskAlerts');
-            
-            highRiskContainer.innerHTML = '';
-            lowRiskContainer.innerHTML = '';
+    const highRiskContainer = document.getElementById('highRiskAlerts');
+    const lowRiskContainer = document.getElementById('lowRiskAlerts');
+    
+    highRiskContainer.innerHTML = '';
+    lowRiskContainer.innerHTML = '';
 
-            // Sort alerts by confidence in descending order
-            alerts.sort((a, b) => b.confidence - a.confidence);
+    // Sort alerts by confidence in descending order
+    alerts.sort((a, b) => b.confidence - a.confidence);
 
-            // Split alerts into high and low risk
-            const highRiskAlerts = alerts.filter(alert => alert.confidence >= 0.5);
-            const lowRiskAlerts = alerts.filter(alert => alert.confidence < 0.5);
+    // Split alerts into high and low risk
+    const highRiskAlerts = alerts.filter(alert => alert.confidence >= 0.5);
+    const lowRiskAlerts = alerts.filter(alert => alert.confidence < 0.5);
 
-            // Display high risk alerts
-            highRiskAlerts.forEach(alert => {
-                const alertDiv = createAlertElement(alert, 'high-risk-alert', 'confidence-high');
-                highRiskContainer.appendChild(alertDiv);
-            });
+    // Display high risk alerts
+    highRiskAlerts.forEach(alert => {
+        const alertDiv = createAlertElement(alert, 'high-risk-alert', 'confidence-high');
+        highRiskContainer.appendChild(alertDiv);
+    });
 
-            // Display low risk alerts
-            lowRiskAlerts.forEach(alert => {
-                const alertDiv = createAlertElement(alert, 'low-risk-alert', 'confidence-low');
-                lowRiskContainer.appendChild(alertDiv);
-            });
+    // Display low risk alerts
+    lowRiskAlerts.forEach(alert => {
+        const alertDiv = createAlertElement(alert, 'low-risk-alert', 'confidence-low');
+        lowRiskContainer.appendChild(alertDiv);
+    });
 
-            document.getElementById('alertsSection').style.display = 'block';
-        }
+    document.getElementById('alertsSection').style.display = 'block';
+}
 
-        function createAlertElement(alert, alertClass, confidenceClass) {
-            const alertDiv = document.createElement('div');
-            alertDiv.className = `alert ${alertClass}`;
-            alertDiv.innerHTML = `
-                <h4>Alert #${alert.record_id} | Confidence: <span class="${confidenceClass}">${(alert.confidence * 100).toFixed(1)}%</span></h4>
-                <p><strong>Amount:</strong> ${alert.amount} | <strong>Category:</strong> ${alert.category}</p>
-                <p><strong>Customer:</strong> ${alert.customer_id} | <strong>Merchant:</strong> ${alert.merchant_id} | <strong>Step:</strong> ${alert.step}</p>
-                <p><strong>Risk Factors:</strong> ${alert.risk_factors}</p>
-                <div class="justifications">
-                    ${alert.justifications.map(j => `
-                        <div class="justification">
-                            <strong>${j.title}</strong><br>
-                            ${j.description}<br>
-                            <small>Strength: ${j.strength.toFixed(1)} | Risk: ${j.risk_level}</small>
-                        </div>
-                    `).join('')}
+function createAlertElement(alert, alertClass, confidenceClass) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert ${alertClass}`;
+    alertDiv.innerHTML = `
+        <h4>Alert #${alert.record_id} | Confidence: <span class="${confidenceClass}">${(alert.confidence * 100).toFixed(1)}%</span></h4>
+        <p><strong>Amount:</strong> ${alert.amount} | <strong>Category:</strong> ${alert.category}</p>
+        <p><strong>Customer:</strong> ${alert.customer_id} | <strong>Merchant:</strong> ${alert.merchant_id} | <strong>Step:</strong> ${alert.step}</p>
+        <p><strong>Risk Factors:</strong> ${alert.risk_factors}</p>
+        <div class="justifications">
+            ${alert.justifications.map(j => `
+                <div class="justification">
+                    <strong>${j.title}</strong><br>
+                    ${j.description}<br>
+                    <small>Strength: ${j.strength.toFixed(1)} | Risk: ${j.risk_level}</small>
                 </div>
-            `;
-            return alertDiv;
-        }
+            `).join('')}
+        </div>
+    `;
+    return alertDiv;
+}
     </script>
 </body>
 </html>
+
 
