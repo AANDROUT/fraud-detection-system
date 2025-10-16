@@ -5,12 +5,12 @@
     <style>
         body { 
             font-family: Arial, sans-serif; 
-            margin: 40px; 
+            margin: 20px; 
             background-color: #f8f9fa;
             color: #333;
         }
         .header {
-            background-color: #001f3f; /* Navy blue */
+            background-color: #001f3f;
             color: white;
             padding: 20px;
             border-radius: 10px;
@@ -40,18 +40,27 @@
             border-radius: 5px;
             margin-bottom: 15px;
         }
+        .alert-container {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            background: white;
+        }
         .alert { 
-            background: #fff3cd; 
+            background: white; 
             padding: 15px; 
             margin: 10px 0; 
             border-radius: 5px; 
-            border-left: 4px solid #ffc107; 
+            border-left: 4px solid #ffc107;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         .high-confidence { 
-            border-left: 4px solid #dc3545; /* Red for high confidence alerts */
+            border-left: 4px solid #dc3545;
         }
         .low-confidence { 
-            border-left: 4px solid #ffc107; /* Yellow for low confidence alerts */
+            border-left: 4px solid #ffc107;
         }
         .metric-card { 
             background: white; 
@@ -71,6 +80,7 @@
             padding: 10px; 
             margin: 5px 0; 
             border-radius: 3px; 
+            border-left: 3px solid #6c757d;
         }
         button {
             background-color: #001f3f;
@@ -90,6 +100,25 @@
             border-radius: 5px;
             margin-right: 10px;
         }
+        .summary {
+            background: #001f3f;
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-weight: bold;
+        }
+        .confidence-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .high-badge { background: #dc3545; color: white; }
+        .medium-badge { background: #ffc107; color: black; }
+        .low-badge { background: #6c757d; color: white; }
     </style>
 </head>
 <body>
@@ -113,173 +142,72 @@
     <div id="alertsSection" style="display:none;">
         <div class="alert-section">
             <h3>High Confidence Alerts (Above 50% Likelihood)</h3>
-            <div id="highAlertsContainer"></div>
+            <div class="alert-container" id="highAlertsContainer"></div>
         </div>
         
         <div class="alert-section">
             <h3>Low Confidence Alerts (Below 50% Likelihood)</h3>
-            <div id="lowAlertsContainer"></div>
+            <div class="alert-container" id="lowAlertsContainer"></div>
         </div>
     </div>
 
     <script>
-        // Sample data for demonstration
-        const sampleData = {
-            success: true,
-            dashboard: {
-                recall: "92%",
-                fraud_caught: 23,
-                fraud_cases: 25,
-                precision: "85%",
-                alerts_generated: 27,
-                false_alerts: 4,
-                alert_efficiency: "0.85"
-            },
-            alerts: [
-                {
-                    record_id: 1001,
-                    confidence: 0.87,
-                    amount: "$1,250.00",
-                    category: "Electronics",
-                    customer_id: "CUST-7821",
-                    merchant_id: "MERCH-4592",
-                    step: "Online Purchase",
-                    risk_factors: "High amount, New merchant",
-                    justifications: [
-                        {
-                            title: "Unusual Amount",
-                            description: "Transaction amount is significantly higher than customer's average",
-                            strength: 0.9,
-                            risk_level: "High"
-                        },
-                        {
-                            title: "New Merchant",
-                            description: "Customer has never transacted with this merchant before",
-                            strength: 0.8,
-                            risk_level: "Medium"
-                        }
-                    ]
-                },
-                {
-                    record_id: 1002,
-                    confidence: 0.65,
-                    amount: "$450.00",
-                    category: "Travel",
-                    customer_id: "CUST-5432",
-                    merchant_id: "MERCH-1287",
-                    step: "Flight Booking",
-                    risk_factors: "International transaction, Short booking window",
-                    justifications: [
-                        {
-                            title: "International Transaction",
-                            description: "Transaction occurred in a country the customer hasn't visited before",
-                            strength: 0.7,
-                            risk_level: "Medium"
-                        }
-                    ]
-                },
-                {
-                    record_id: 1003,
-                    confidence: 0.42,
-                    amount: "$89.99",
-                    category: "Retail",
-                    customer_id: "CUST-7821",
-                    merchant_id: "MERCH-6734",
-                    step: "In-store Purchase",
-                    risk_factors: "Unusual time of day",
-                    justifications: [
-                        {
-                            title: "Unusual Time",
-                            description: "Transaction occurred outside of customer's typical shopping hours",
-                            strength: 0.4,
-                            risk_level: "Low"
-                        }
-                    ]
-                },
-                {
-                    record_id: 1004,
-                    confidence: 0.78,
-                    amount: "$2,100.00",
-                    category: "Jewelry",
-                    customer_id: "CUST-9102",
-                    merchant_id: "MERCH-3345",
-                    step: "Online Purchase",
-                    risk_factors: "High value, Luxury goods",
-                    justifications: [
-                        {
-                            title: "Luxury Purchase",
-                            description: "Customer has no history of purchasing luxury items",
-                            strength: 0.8,
-                            risk_level: "High"
-                        },
-                        {
-                            title: "High Value",
-                            description: "Transaction amount exceeds customer's typical spending limit",
-                            strength: 0.7,
-                            risk_level: "Medium"
-                        }
-                    ]
-                },
-                {
-                    record_id: 1005,
-                    confidence: 0.35,
-                    amount: "$35.50",
-                    category: "Dining",
-                    customer_id: "CUST-5432",
-                    merchant_id: "MERCH-8821",
-                    step: "Restaurant Payment",
-                    risk_factors: "Distance from home",
-                    justifications: [
-                        {
-                            title: "Location Anomaly",
-                            description: "Transaction occurred far from customer's typical locations",
-                            strength: 0.3,
-                            risk_level: "Low"
-                        }
-                    ]
-                }
-            ]
-        };
-
         async function processFile() {
             const fileInput = document.getElementById('fileInput');
             const statusDiv = document.getElementById('uploadStatus');
             
-            // For demo purposes, we'll use sample data
-            // In a real implementation, you would process the actual file
-            
+            if (!fileInput.files[0]) {
+                statusDiv.innerHTML = '<span style="color: red;">Please select a file</span>';
+                return;
+            }
+
             statusDiv.innerHTML = 'Processing...';
             
-            // Simulate API call delay
-            setTimeout(() => {
-                statusDiv.innerHTML = '<span style="color: green;">Processing complete!</span>';
-                displayDashboard(sampleData.dashboard);
-                displayAlerts(sampleData.alerts);
-            }, 1000);
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusDiv.innerHTML = '<span style="color: green;">Processing complete!</span>';
+                    displayDashboard(data.dashboard);
+                    displayAlerts(data.alerts);
+                } else {
+                    statusDiv.innerHTML = `<span style="color: red;">${data.error}</span>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<span style="color: red;">Upload failed: ${error}</span>`;
+            }
         }
 
         function displayDashboard(dashboard) {
             const metricsDiv = document.getElementById('metrics');
             metricsDiv.innerHTML = `
-                <div class="metric-card good">
-                    <h4>Fraud Detection</h4>
+                <div class="metric-card ${dashboard.recall.replace('%', '') > 90 ? 'good' : 'warning'}">
+                    <h4>Fraud Detection Rate</h4>
                     <h2>${dashboard.recall}</h2>
-                    <small>${dashboard.fraud_caught}/${dashboard.fraud_cases} cases</small>
+                    <small>${dashboard.fraud_caught}/${dashboard.fraud_cases} fraud cases caught</small>
                 </div>
-                <div class="metric-card warning">
+                <div class="metric-card ${dashboard.precision.replace('%', '') > 80 ? 'good' : 'warning'}">
                     <h4>Precision</h4>
                     <h2>${dashboard.precision}</h2>
-                    <small>Alert accuracy</small>
+                    <small>Alert accuracy rate</small>
                 </div>
-                <div class="metric-card">
-                    <h4>Alerts</h4>
+                <div class="metric-card ${dashboard.false_alerts/dashboard.alerts_generated < 0.3 ? 'good' : 'warning'}">
+                    <h4>Alerts Generated</h4>
                     <h2>${dashboard.alerts_generated}</h2>
                     <small>${dashboard.false_alerts} false alerts</small>
                 </div>
                 <div class="metric-card">
-                    <h4>Efficiency</h4>
+                    <h4>Efficiency Ratio</h4>
                     <h2>${dashboard.alert_efficiency}</h2>
-                    <small>Fraud per alert</small>
+                    <small>Fraud caught per alert</small>
                 </div>
             `;
             document.getElementById('dashboard').style.display = 'block';
@@ -327,8 +255,16 @@
         }
 
         function createAlertHTML(alert) {
+            const confidencePercent = Math.round(alert.confidence * 100);
+            const badgeClass = alert.confidence >= 0.7 ? 'high-badge' : alert.confidence >= 0.5 ? 'medium-badge' : 'low-badge';
+            const badgeText = alert.confidence >= 0.7 ? 'HIGH' : alert.confidence >= 0.5 ? 'MEDIUM' : 'LOW';
+            
             return `
-                <h4>Alert #${alert.record_id} | Confidence: ${(alert.confidence * 100).toFixed(0)}%</h4>
+                <h4>
+                    Alert #${alert.record_id} 
+                    <span class="confidence-badge ${badgeClass}">${badgeText}</span>
+                </h4>
+                <p><strong>Confidence:</strong> ${confidencePercent}%</p>
                 <p><strong>Amount:</strong> ${alert.amount} | <strong>Category:</strong> ${alert.category}</p>
                 <p><strong>Customer:</strong> ${alert.customer_id} | <strong>Merchant:</strong> ${alert.merchant_id} | <strong>Step:</strong> ${alert.step}</p>
                 <p><strong>Risk Factors:</strong> ${alert.risk_factors}</p>
@@ -337,7 +273,7 @@
                         <div class="justification">
                             <strong>${j.title}</strong><br>
                             ${j.description}<br>
-                            <small>Strength: ${j.strength.toFixed(1)} | Risk: ${j.risk_level}</small>
+                            <small>Strength: ${j.strength.toFixed(1)} | Risk Level: ${j.risk_level}</small>
                         </div>
                     `).join('')}
                 </div>
