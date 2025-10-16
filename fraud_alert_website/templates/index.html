@@ -1,37 +1,348 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Apex Fraud Studio</title>
+    <title>Apex Fraud Studio - Fraud Alert System</title>
     <style>
         body { 
             font-family: Arial, sans-serif; 
-            margin: 40px;
+            margin: 40px; 
             background-color: #f8f9fa;
+            color: #333;
         }
         .header {
-            background: #001f3f;
+            background-color: #001f3f; /* Navy blue */
             color: white;
             padding: 20px;
             border-radius: 10px;
-            margin-bottom: 20px;
+            margin-bottom: 30px;
         }
         .upload-section { 
-            background: white; 
-            padding: 25px; 
+            background: #f5f5f5; 
+            padding: 20px; 
             border-radius: 10px; 
-            margin-bottom: 25px;
+            margin-bottom: 30px; 
             border-left: 4px solid #001f3f;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
         .dashboard { 
-            background: white; 
-            padding: 25px; 
+            background: #e8f4fd; 
+            padding: 20px; 
             border-radius: 10px; 
-            margin-bottom: 25px;
+            margin-bottom: 30px; 
             border-left: 4px solid #001f3f;
+        }
+        .alert-section {
+            margin-bottom: 30px;
+        }
+        .alert-section h3 {
+            background-color: #001f3f;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+        }
+        .alert { 
+            background: #fff3cd; 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
+            border-left: 4px solid #ffc107; 
+        }
+        .high-confidence { 
+            border-left: 4px solid #dc3545; /* Red for high confidence alerts */
+        }
+        .low-confidence { 
+            border-left: 4px solid #ffc107; /* Yellow for low confidence alerts */
+        }
+        .metric-card { 
+            background: white; 
+            padding: 15px; 
+            margin: 10px; 
+            border-radius: 5px; 
+            display: inline-block; 
+            width: 200px; 
+            text-align: center;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        .alerts-section { 
-            background: white; 
-            padding: 25px; 
-            border-radius: 10px;
+        .good { border-left: 4px solid #28a745; }
+        .warning { border-left: 4px solid #ffc107; }
+        .danger { border-left: 4px solid #dc3545; }
+        .justification { 
+            background: #f8f9fa; 
+            padding: 10px; 
+            margin: 5px 0; 
+            border-radius: 3px; 
+        }
+        button {
+            background-color: #001f3f;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #003366;
+        }
+        input[type="file"] {
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Apex Fraud Studio</h1>
+        <h2>Fraud Alert System</h2>
+    </div>
+    
+    <div class="upload-section">
+        <h3>Upload Transaction Batch</h3>
+        <input type="file" id="fileInput" accept=".csv">
+        <button onclick="processFile()">Process Batch</button>
+        <div id="uploadStatus"></div>
+    </div>
+
+    <div id="dashboard" class="dashboard" style="display:none;">
+        <h3>System Performance Dashboard</h3>
+        <div id="metrics"></div>
+    </div>
+
+    <div id="alertsSection" style="display:none;">
+        <div class="alert-section">
+            <h3>High Confidence Alerts (Above 50% Likelihood)</h3>
+            <div id="highAlertsContainer"></div>
+        </div>
+        
+        <div class="alert-section">
+            <h3>Low Confidence Alerts (Below 50% Likelihood)</h3>
+            <div id="lowAlertsContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        // Sample data for demonstration
+        const sampleData = {
+            success: true,
+            dashboard: {
+                recall: "92%",
+                fraud_caught: 23,
+                fraud_cases: 25,
+                precision: "85%",
+                alerts_generated: 27,
+                false_alerts: 4,
+                alert_efficiency: "0.85"
+            },
+            alerts: [
+                {
+                    record_id: 1001,
+                    confidence: 0.87,
+                    amount: "$1,250.00",
+                    category: "Electronics",
+                    customer_id: "CUST-7821",
+                    merchant_id: "MERCH-4592",
+                    step: "Online Purchase",
+                    risk_factors: "High amount, New merchant",
+                    justifications: [
+                        {
+                            title: "Unusual Amount",
+                            description: "Transaction amount is significantly higher than customer's average",
+                            strength: 0.9,
+                            risk_level: "High"
+                        },
+                        {
+                            title: "New Merchant",
+                            description: "Customer has never transacted with this merchant before",
+                            strength: 0.8,
+                            risk_level: "Medium"
+                        }
+                    ]
+                },
+                {
+                    record_id: 1002,
+                    confidence: 0.65,
+                    amount: "$450.00",
+                    category: "Travel",
+                    customer_id: "CUST-5432",
+                    merchant_id: "MERCH-1287",
+                    step: "Flight Booking",
+                    risk_factors: "International transaction, Short booking window",
+                    justifications: [
+                        {
+                            title: "International Transaction",
+                            description: "Transaction occurred in a country the customer hasn't visited before",
+                            strength: 0.7,
+                            risk_level: "Medium"
+                        }
+                    ]
+                },
+                {
+                    record_id: 1003,
+                    confidence: 0.42,
+                    amount: "$89.99",
+                    category: "Retail",
+                    customer_id: "CUST-7821",
+                    merchant_id: "MERCH-6734",
+                    step: "In-store Purchase",
+                    risk_factors: "Unusual time of day",
+                    justifications: [
+                        {
+                            title: "Unusual Time",
+                            description: "Transaction occurred outside of customer's typical shopping hours",
+                            strength: 0.4,
+                            risk_level: "Low"
+                        }
+                    ]
+                },
+                {
+                    record_id: 1004,
+                    confidence: 0.78,
+                    amount: "$2,100.00",
+                    category: "Jewelry",
+                    customer_id: "CUST-9102",
+                    merchant_id: "MERCH-3345",
+                    step: "Online Purchase",
+                    risk_factors: "High value, Luxury goods",
+                    justifications: [
+                        {
+                            title: "Luxury Purchase",
+                            description: "Customer has no history of purchasing luxury items",
+                            strength: 0.8,
+                            risk_level: "High"
+                        },
+                        {
+                            title: "High Value",
+                            description: "Transaction amount exceeds customer's typical spending limit",
+                            strength: 0.7,
+                            risk_level: "Medium"
+                        }
+                    ]
+                },
+                {
+                    record_id: 1005,
+                    confidence: 0.35,
+                    amount: "$35.50",
+                    category: "Dining",
+                    customer_id: "CUST-5432",
+                    merchant_id: "MERCH-8821",
+                    step: "Restaurant Payment",
+                    risk_factors: "Distance from home",
+                    justifications: [
+                        {
+                            title: "Location Anomaly",
+                            description: "Transaction occurred far from customer's typical locations",
+                            strength: 0.3,
+                            risk_level: "Low"
+                        }
+                    ]
+                }
+            ]
+        };
+
+        async function processFile() {
+            const fileInput = document.getElementById('fileInput');
+            const statusDiv = document.getElementById('uploadStatus');
+            
+            // For demo purposes, we'll use sample data
+            // In a real implementation, you would process the actual file
+            
+            statusDiv.innerHTML = 'Processing...';
+            
+            // Simulate API call delay
+            setTimeout(() => {
+                statusDiv.innerHTML = '<span style="color: green;">Processing complete!</span>';
+                displayDashboard(sampleData.dashboard);
+                displayAlerts(sampleData.alerts);
+            }, 1000);
+        }
+
+        function displayDashboard(dashboard) {
+            const metricsDiv = document.getElementById('metrics');
+            metricsDiv.innerHTML = `
+                <div class="metric-card good">
+                    <h4>Fraud Detection</h4>
+                    <h2>${dashboard.recall}</h2>
+                    <small>${dashboard.fraud_caught}/${dashboard.fraud_cases} cases</small>
+                </div>
+                <div class="metric-card warning">
+                    <h4>Precision</h4>
+                    <h2>${dashboard.precision}</h2>
+                    <small>Alert accuracy</small>
+                </div>
+                <div class="metric-card">
+                    <h4>Alerts</h4>
+                    <h2>${dashboard.alerts_generated}</h2>
+                    <small>${dashboard.false_alerts} false alerts</small>
+                </div>
+                <div class="metric-card">
+                    <h4>Efficiency</h4>
+                    <h2>${dashboard.alert_efficiency}</h2>
+                    <small>Fraud per alert</small>
+                </div>
+            `;
+            document.getElementById('dashboard').style.display = 'block';
+        }
+
+        function displayAlerts(alerts) {
+            // Sort alerts by confidence in descending order
+            alerts.sort((a, b) => b.confidence - a.confidence);
+            
+            // Split alerts into high and low confidence
+            const highConfidenceAlerts = alerts.filter(alert => alert.confidence >= 0.5);
+            const lowConfidenceAlerts = alerts.filter(alert => alert.confidence < 0.5);
+            
+            // Display high confidence alerts
+            const highContainer = document.getElementById('highAlertsContainer');
+            highContainer.innerHTML = '';
+            
+            if (highConfidenceAlerts.length === 0) {
+                highContainer.innerHTML = '<p>No high confidence alerts to display.</p>';
+            } else {
+                highConfidenceAlerts.forEach(alert => {
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = 'alert high-confidence';
+                    alertDiv.innerHTML = createAlertHTML(alert);
+                    highContainer.appendChild(alertDiv);
+                });
+            }
+            
+            // Display low confidence alerts
+            const lowContainer = document.getElementById('lowAlertsContainer');
+            lowContainer.innerHTML = '';
+            
+            if (lowConfidenceAlerts.length === 0) {
+                lowContainer.innerHTML = '<p>No low confidence alerts to display.</p>';
+            } else {
+                lowConfidenceAlerts.forEach(alert => {
+                    const alertDiv = document.createElement('div');
+                    alertDiv.className = 'alert low-confidence';
+                    alertDiv.innerHTML = createAlertHTML(alert);
+                    lowContainer.appendChild(alertDiv);
+                });
+            }
+
+            document.getElementById('alertsSection').style.display = 'block';
+        }
+
+        function createAlertHTML(alert) {
+            return `
+                <h4>Alert #${alert.record_id} | Confidence: ${(alert.confidence * 100).toFixed(0)}%</h4>
+                <p><strong>Amount:</strong> ${alert.amount} | <strong>Category:</strong> ${alert.category}</p>
+                <p><strong>Customer:</strong> ${alert.customer_id} | <strong>Merchant:</strong> ${alert.merchant_id} | <strong>Step:</strong> ${alert.step}</p>
+                <p><strong>Risk Factors:</strong> ${alert.risk_factors}</p>
+                <div class="justifications">
+                    ${alert.justifications.map(j => `
+                        <div class="justification">
+                            <strong>${j.title}</strong><br>
+                            ${j.description}<br>
+                            <small>Strength: ${j.strength.toFixed(1)} | Risk: ${j.risk_level}</small>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>
