@@ -17,7 +17,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 # Global variables for the model and threshold
 fraud_model = None
-model_threshold = 0.15  # Default threshold
+model_threshold = 0.5  # Default threshold
 
 def load_or_train_model():
     """Load or train the fraud detection model"""
@@ -401,6 +401,7 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 
