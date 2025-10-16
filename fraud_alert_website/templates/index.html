@@ -146,39 +146,46 @@
     </div>
 
     <script>
-        async function processFile() {
-            const fileInput = document.getElementById('fileInput');
-            const statusDiv = document.getElementById('uploadStatus');
-            
-            if (!fileInput.files[0]) {
-                statusDiv.innerHTML = '<span style="color: red;">Please select a file</span>';
-                return;
-            }
-
-            statusDiv.innerHTML = 'Processing...';
-            
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
-
-            try {
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const data = await response.json();
-                
-                if (data.success) {
-                    statusDiv.innerHTML = '<span style="color: green;">Processing complete!</span>';
-                    displayDashboard(data.dashboard);
-                    displayAlerts(data.alerts);
-                } else {
-                    statusDiv.innerHTML = `<span style="color: red;">${data.error}</span>`;
-                }
-            } catch (error) {
-                statusDiv.innerHTML = `<span style="color: red;">Upload failed: ${error}</span>`;
-            }
+    async function processFile() {
+        const fileInput = document.getElementById('fileInput');
+        const statusDiv = document.getElementById('uploadStatus');
+    
+        if (!fileInput.files[0]) {
+            statusDiv.innerHTML = '<span style="color: red;">Please select a file</span>';
+            return;
         }
+
+        statusDiv.innerHTML = 'Processing...';
+    
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+
+        try {
+            const response = await fetch('/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+        // ADD THIS - Check if response is JSON
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                const text = await response.text();
+                throw new Error(`Server returned HTML instead of JSON. Status: ${response.status}`);
+            }
+
+            const data = await response.json();
+        
+            if (data.success) {
+                statusDiv.innerHTML = '<span style="color: green;">Processing complete!</span>';
+                displayDashboard(data.dashboard);
+                displayAlerts(data.alerts);
+            } else {
+                statusDiv.innerHTML = `<span style="color: red;">${data.error}</span>`;
+            }
+        } catch (error) {
+            statusDiv.innerHTML = `<span style="color: red;">Upload failed: ${error.message}</span>`;
+        }
+}
 
         function displayDashboard(dashboard) {
             const metricsDiv = document.getElementById('metrics');
@@ -259,5 +266,6 @@ function createAlertElement(alert, alertClass, confidenceClass) {
     </script>
 </body>
 </html>
+
 
 
