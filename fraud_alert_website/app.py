@@ -17,7 +17,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 # Global variables for the model and threshold
 fraud_model = None
-model_threshold = 0.5  # Default threshold
+model_threshold = 0.01  # Default threshold
 
 def load_or_train_model():
     """Load or train the fraud detection model"""
@@ -197,8 +197,18 @@ def get_local_predictions(test_df):
             if prediction_df[col].dtype == 'object':
                 prediction_df[col] = pd.to_numeric(prediction_df[col], errors='coerce').fillna(0)
         
-        # Get predictions
+                # Get predictions
         fraud_proba = fraud_model.predict_proba(prediction_df)[:, 1]
+        
+        # ADD DEBUG INFO HERE
+        print("🔍 ENCODING VERIFICATION:")
+        print(f"Unique categories in batch data: {prediction_df['category'].unique()}")
+        print(f"Sample category values: {prediction_df['category'].head(5).tolist()}")
+        print(f"🔍 Prediction range: {fraud_proba.min():.3f} to {fraud_proba.max():.3f}")
+        print(f"🔍 Predictions above 0.1: {(fraud_proba > 0.1).sum()}")
+        print(f"🔍 Predictions above 0.01: {(fraud_proba > 0.01).sum()}")
+        print(f"🔍 Current threshold: {model_threshold}")
+        print(f"🔍 Alerts that will be generated: {(fraud_proba > model_threshold).sum()}")
         
         alerts = []
         all_predictions = []
@@ -401,6 +411,7 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 
