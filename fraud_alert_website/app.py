@@ -153,7 +153,7 @@ def get_local_predictions(test_df):
     
     print(f"🔍 Getting local predictions for {len(test_df)} records...")
     
-        try:
+    try:
         # Prepare features (ensure we have the right columns)
         expected_features = ['age', 'amount', 'amount_over_cust_median_7d', 'category', 
                            'cust_median_amt_7d', 'cust_tx_count_1d', 'cust_tx_count_7d', 
@@ -411,6 +411,7 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 
