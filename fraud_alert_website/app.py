@@ -36,7 +36,7 @@ def load_or_train_model():
     except Exception as e:
         print(f"❌ Could not load existing model: {e}")
     
-        # Train new model
+    # Train new model
     try:
         print("🔄 Training new fraud detection model...")
         
@@ -74,7 +74,8 @@ def load_or_train_model():
             
             df = pd.DataFrame(training_data)
         
-               print("Dataset shape:", df.shape)
+        # MAKE SURE THIS LINE AND BELOW ARE PROPERLY INDENTED
+        print("Dataset shape:", df.shape)
         print("Columns:", df.columns.tolist())
         print("Fraud distribution:", df['fraud'].value_counts())
         
@@ -157,7 +158,7 @@ def load_or_train_model():
         )
         fraud_model.fit(X_train, y_train)
         model_threshold = 0.15
-
+        
 def get_local_predictions(test_df):
     """Get predictions using local XGBoost model"""
     global fraud_model, model_threshold
@@ -415,5 +416,6 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
