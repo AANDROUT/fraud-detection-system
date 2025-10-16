@@ -27,7 +27,6 @@ def load_or_train_model():
     threshold_path = 'model_threshold.pkl'
     
     try:
-        # Try to load existing model
         if os.path.exists(model_path) and os.path.exists(threshold_path):
             fraud_model = joblib.load(model_path)
             model_threshold = joblib.load(threshold_path)
@@ -36,20 +35,17 @@ def load_or_train_model():
     except Exception as e:
         print(f"❌ Could not load existing model: {e}")
     
-    # Train new model
     try:
         print("🔄 Training new fraud detection model...")
         
-        # Try to load your actual training data
         training_file = "BankSim_Fraud_10Features_Sample.csv"
         if os.path.exists(training_file):
             print(f"📊 Loading training data from {training_file}...")
             df = pd.read_csv(training_file)
             df = df.fillna(0)
         else:
-            # Fallback to synthetic data if file not found
             print("❌ Training file not found, creating sample data...")
-            n_samples = 5000  # Smaller sample for faster training
+            n_samples = 5000
             np.random.seed(42)
             
             training_data = {
@@ -69,37 +65,31 @@ def load_or_train_model():
                 'mch_unique_customers_7d': np.random.poisson(15, n_samples),
                 'step': np.random.randint(1, 100, n_samples),
                 'time_since_last_pair_tx': np.random.exponential(20, n_samples),
-                'fraud': np.random.choice([0, 1], n_samples, p=[0.98, 0.02])  # 2% fraud rate
+                'fraud': np.random.choice([0, 1], n_samples, p=[0.98, 0.02])
             }
             
             df = pd.DataFrame(training_data)
         
-        # MAKE SURE THIS LINE AND BELOW ARE PROPERLY INDENTED
         print("Dataset shape:", df.shape)
         print("Columns:", df.columns.tolist())
         print("Fraud distribution:", df['fraud'].value_counts())
         
-        # Split features and target
         X = df.drop(columns=["fraud"])
         y = df["fraud"]
         
-        # Convert categorical variables to numeric codes
         categorical_cols = ['category', 'customer', 'gender', 'merchant']
         for col in categorical_cols:
             if col in X.columns:
                 if X[col].dtype == 'object' or X[col].dtype.name == 'category':
                     X[col] = X[col].astype('category').cat.codes
         
-        # Convert age to numeric if it's object type
         if 'age' in X.columns and X['age'].dtype == 'object':
             X['age'] = pd.to_numeric(X['age'], errors='coerce').fillna(0)
         
-        # Convert all columns to numeric to avoid type issues
         for col in X.columns:
             if X[col].dtype == 'object':
                 X[col] = pd.to_numeric(X[col], errors='coerce').fillna(0)
         
-        # Train/test split
         X_train, X_temp, y_train, y_temp = train_test_split(
             X, y, test_size=0.30, stratify=y, random_state=42
         )
@@ -109,11 +99,9 @@ def load_or_train_model():
         
         print("Train size:", X_train.shape, "Validation size:", X_val.shape)
         
-        # Calculate class imbalance ratio
         ratio = (y_train == 0).sum() / (y_train == 1).sum() if (y_train == 1).sum() > 0 else 1
         print(f"Class imbalance ratio: {ratio:.2f}")
         
-        # Train XGBoost model with categorical support
         fraud_model = xgb.XGBClassifier(
             n_estimators=100,
             learning_rate=0.05,
@@ -124,7 +112,7 @@ def load_or_train_model():
             tree_method='hist',
             scale_pos_weight=ratio,
             random_state=42,
-            enable_categorical=True  # Add this line for categorical support
+            enable_categorical=True
         )
         
         fraud_model.fit(
@@ -133,7 +121,6 @@ def load_or_train_model():
             verbose=False
         )
         
-        # Find optimal threshold
         val_proba = fraud_model.predict_proba(X_val)[:, 1]
         prec, rec, thr = precision_recall_curve(y_val, val_proba)
         f1 = 2 * prec * rec / (prec + rec + 1e-9)
@@ -142,13 +129,11 @@ def load_or_train_model():
         
         print(f"✅ Model trained successfully with threshold: {model_threshold:.3f}")
         
-        # Save model and threshold
         joblib.dump(fraud_model, model_path)
         joblib.dump(model_threshold, threshold_path)
         
     except Exception as e:
         print(f"❌ Error training model: {e}")
-        # Fallback to logistic regression
         print("🔄 Falling back to logistic regression...")
         fraud_model = LogisticRegression(
             solver="liblinear",
@@ -416,6 +401,7 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 
