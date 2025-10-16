@@ -151,6 +151,10 @@ def get_local_predictions(test_df):
     if fraud_model is None:
         load_or_train_model()
     
+    # FORCE LOWER THRESHOLD - OVERRIDE THE TRAINED THRESHOLD
+    model_threshold = 0.01
+    print(f"🔍 USING FORCED THRESHOLD: {model_threshold} (overriding trained threshold)")
+    
     print(f"🔍 Getting local predictions for {len(test_df)} records...")
     
     try:
@@ -324,9 +328,12 @@ def upload_file():
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
+        print(f"✅ UPLOAD: File saved as {filepath}")
         
         try:
             df = pd.read_csv(filepath)
+            print(f"📊 UPLOAD: File loaded - {df.shape[0]} rows, {df.shape[1]} columns")
+            print(f"📊 UPLOAD: Columns: {df.columns.tolist()}")
             for col in df.columns:
                 if df[col].dtype == 'object':
                     df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x)
@@ -411,6 +418,7 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 
