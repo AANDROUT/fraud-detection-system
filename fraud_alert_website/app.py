@@ -148,12 +148,15 @@ def get_local_predictions(test_df):
     """Get predictions using local XGBoost model"""
     global fraud_model, model_threshold
     
+    print("🔍 DEBUG: Entering get_local_predictions")
+    
     if fraud_model is None:
+        print("🔍 DEBUG: Model is None, loading...")
         load_or_train_model()
     
-    # FORCE LOWER THRESHOLD - OVERRIDE THE TRAINED THRESHOLD
+    # FORCE LOWER THRESHOLD
     model_threshold = 0.01
-    print(f"🔍 USING FORCED THRESHOLD: {model_threshold} (overriding trained threshold)")
+    print(f"🔍 USING FORCED THRESHOLD: {model_threshold}")
     
     print(f"🔍 Getting local predictions for {len(test_df)} records...")
     
@@ -418,6 +421,7 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 
