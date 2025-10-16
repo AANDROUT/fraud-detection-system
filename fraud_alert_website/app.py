@@ -320,12 +320,10 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    print("🎯 UPLOAD FUNCTION WAS CALLED!")  # ADD THIS LINE
+    
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': 'No file uploaded'})
-    
-    file = request.files['file']
-    if file.filename == '':
-        return jsonify({'success': False, 'error': 'No file selected'})
     
     if file and file.filename.endswith('.csv'):
         filename = secure_filename(file.filename)
@@ -405,6 +403,7 @@ def upload_file():
             })
             
         except Exception as e:
+            print(f"❌ UPLOAD ERROR: {str(e)}")  # ADD THIS LINE
             return jsonify({'success': False, 'error': f'Processing error: {str(e)}'})
     
     return jsonify({'success': False, 'error': 'Invalid file type'})
@@ -421,6 +420,7 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 
