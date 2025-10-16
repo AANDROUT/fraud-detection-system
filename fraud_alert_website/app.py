@@ -338,32 +338,42 @@ def upload_file():
         return jsonify({'success': False, 'error': 'No file selected'})
     
     if file and file.filename.endswith('.csv'):
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-        print(f"✅ UPLOAD: File saved as {filepath}", file=sys.stderr)
-        sys.stderr.flush()
-        
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+    file.save(filepath)
+    print(f"✅ UPLOAD: File saved as {filepath}", file=sys.stderr)
+    sys.stderr.flush()
+    
+    # ADD THIS DEBUG - Check if file actually exists and has content
+    print(f"🔍 DEBUG: File exists: {os.path.exists(filepath)}")
+    print(f"🔍 DEBUG: File size: {os.path.getsize(filepath)} bytes")
+    
+    try:
+        # ADD THIS - Try different encoding if needed
         try:
             df = pd.read_csv(filepath)
-            print(f"📊 UPLOAD: File loaded - {df.shape[0]} rows, {df.shape[1]} columns")
-            print(f"📊 UPLOAD: Columns: {df.columns.tolist()}")
-            
-            # ADD THIS CHECK - Make sure file has data
-            if df.empty:
-                print("❌ UPLOAD: File is empty")
-                return jsonify({'success': False, 'error': 'File is empty'})
-            
-            for col in df.columns:
-                if df[col].dtype == 'object':
-                    df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x)
-                if col in ['amount', 'cust_tx_count_1d', 'first_time_pair', 'time_since_last_pair_tx']:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-            
-            df = df.reset_index().rename(columns={'index': 'original_index'})
-            
-            # Use local model instead of DataRobot
-            alerts, predictions = get_local_predictions(df)
+        except UnicodeDecodeError:
+            df = pd.read_csv(filepath, encoding='latin-1')
+        
+        print(f"📊 UPLOAD: File loaded - {df.shape[0]} rows, {df.shape[1]} columns")
+        print(f"📊 UPLOAD: Columns: {df.columns.tolist()}")
+        
+        # ADD THIS CHECK - Make sure file has data
+        if df.empty:
+            print("❌ UPLOAD: File is empty")
+            return jsonify({'success': False, 'error': 'File is empty'})
+        
+        for col in df.columns:
+            if df[col].dtype == 'object':
+                df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x)
+            if col in ['amount', 'cust_tx_count_1d', 'first_time_pair', 'time_since_last_pair_tx']:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        
+        df = df.reset_index().rename(columns={'index': 'original_index'})
+        
+        # Use local model instead of DataRobot
+        alerts, predictions = get_local_predictions(df)
+        # ... rest of your code
             enhanced_alerts, stats = create_95percent_recall_justifications(df, alerts)
             
             # Calculate metrics
@@ -442,3 +452,4 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
