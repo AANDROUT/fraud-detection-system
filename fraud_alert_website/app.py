@@ -320,12 +320,20 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    print("🎯 UPLOAD FUNCTION WAS CALLED!")
+    # FORCE OUTPUT - This should definitely appear
+    import sys
+    print("🎯 UPLOAD FUNCTION WAS CALLED!", file=sys.stderr)
+    sys.stderr.flush()  # Force the output
     
     if 'file' not in request.files:
+        print("❌ DEBUG: No file in request.files", file=sys.stderr)
+        sys.stderr.flush()
         return jsonify({'success': False, 'error': 'No file uploaded'})
     
     file = request.files['file']
+    print(f"🎯 DEBUG: Processing file: {file.filename}", file=sys.stderr)
+    sys.stderr.flush()
+    
     if file.filename == '':
         return jsonify({'success': False, 'error': 'No file selected'})
     
@@ -333,7 +341,8 @@ def upload_file():
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        print(f"✅ UPLOAD: File saved as {filepath}")
+        print(f"✅ UPLOAD: File saved as {filepath}", file=sys.stderr)
+        sys.stderr.flush()
         
         try:
             df = pd.read_csv(filepath)
@@ -345,7 +354,6 @@ def upload_file():
                 print("❌ UPLOAD: File is empty")
                 return jsonify({'success': False, 'error': 'File is empty'})
             
-            # Rest of your existing processing code...
             for col in df.columns:
                 if df[col].dtype == 'object':
                     df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x)
@@ -414,7 +422,7 @@ def upload_file():
             })
             
         except Exception as e:
-            print(f"❌ UPLOAD ERROR: {str(e)}")  # ADD THIS LINE
+            print(f"❌ UPLOAD ERROR: {str(e)}")
             return jsonify({'success': False, 'error': f'Processing error: {str(e)}'})
     
     return jsonify({'success': False, 'error': 'Invalid file type'})
@@ -422,7 +430,10 @@ def upload_file():
 if __name__ == '__main__':
     # Create upload folder if it doesn't exist
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
+        print(f"📁 Creating upload folder: {app.config['UPLOAD_FOLDER']}")
         os.makedirs(app.config['UPLOAD_FOLDER'])
+    else:
+        print(f"📁 Upload folder exists: {app.config['UPLOAD_FOLDER']}")
     
     # Load or train model on startup
     print("🚀 Starting Flask app - loading fraud detection model...")
@@ -431,17 +442,3 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
