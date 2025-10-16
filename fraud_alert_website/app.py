@@ -155,11 +155,11 @@ def get_local_predictions(test_df):
     
     try:
         # Prepare features (ensure we have the right columns)
-        expected_features = ['age', 'amount', 'amount_over_cust_median_7d', 'category', 
+                expected_features = ['age', 'amount', 'amount_over_cust_median_7d', 'category', 
                            'cust_median_amt_7d', 'cust_tx_count_1d', 'cust_tx_count_7d', 
                            'cust_unique_merchants_30d', 'customer', 'first_time_pair', 
                            'gender', 'log_amount', 'mch_tx_count_1d', 'mch_unique_customers_7d', 
-                           'step', 'time_since_last_pair_tx']
+                           'merchant', 'step', 'time_since_last_pair_tx'] 
         
         # Create a copy and fill missing columns with defaults
         prediction_df = test_df.copy()
@@ -172,7 +172,7 @@ def get_local_predictions(test_df):
                     prediction_df[col] = 1
                 elif col in ['amount_over_cust_median_7d', 'cust_median_amt_7d', 'log_amount']:
                     prediction_df[col] = 0.0
-                elif col in ['customer', 'gender']:
+                                elif col in ['customer', 'gender', 'merchant']: 
                     prediction_df[col] = "unknown"
                 elif col == 'category':
                     prediction_df[col] = "es_other"
@@ -411,6 +411,7 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 
