@@ -11,7 +11,7 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 def create_95percent_recall_justifications(df, alerts):
     """ULTRA-AGGRESSIVE for 90%+ recall"""
-    print("🔍 ULTRA-AGGRESSIVE 90%+ SYSTEM")
+    print("ULTRA-AGGRESSIVE 90%+ SYSTEM")
     
     enhanced_alerts = []
     
@@ -27,7 +27,7 @@ def create_95percent_recall_justifications(df, alerts):
         if category not in safe_categories:
             justifications.append({
                 'category': 'CATEGORY_RISK', 'feature': 'category', 'strength': 0.4,
-                'title': '🎯 Suspicious Category', 'description': f"Transaction in {category}",
+                'title': 'Suspicious Category', 'description': f"Transaction in {category}",
                 'risk_level': 'MEDIUM', 'context': "Category may indicate higher risk"
             })
         
@@ -36,7 +36,7 @@ def create_95percent_recall_justifications(df, alerts):
         if amount > 30:
             justifications.append({
                 'category': 'AMOUNT_ANOMALY', 'feature': 'amount', 'strength': 0.3,
-                'title': '💰 Moderate Amount', 'description': f"Amount ${amount:.2f}",
+                'title': 'Moderate Amount', 'description': f"Amount ${amount:.2f}",
                 'risk_level': 'LOW', 'context': "Amount above minimum threshold"
             })
         
@@ -45,7 +45,7 @@ def create_95percent_recall_justifications(df, alerts):
         if time_since_last >= 0 and time_since_last < 10.0:
             justifications.append({
                 'category': 'VELOCITY_RISK', 'feature': 'time_since_last_pair_tx', 'strength': 0.3,
-                'title': '⚡ Any Rapid Transaction', 'description': f"Within {time_since_last:.1f} units",
+                'title': 'Any Rapid Transaction', 'description': f"Within {time_since_last:.1f} units",
                 'risk_level': 'LOW', 'context': "Rapid transaction pattern"
             })
         
@@ -53,7 +53,7 @@ def create_95percent_recall_justifications(df, alerts):
         if record_data.get('first_time_pair', 0) == 1:
             justifications.append({
                 'category': 'RELATIONSHIP_RISK', 'feature': 'first_time_pair', 'strength': 0.3,
-                'title': '🆕 Any First-Time', 'description': "New relationship",
+                'title': 'Any First-Time', 'description': "New relationship",
                 'risk_level': 'LOW', 'context': "New customer-merchant pair"
             })
         
@@ -62,7 +62,7 @@ def create_95percent_recall_justifications(df, alerts):
         if daily_tx > 1:
             justifications.append({
                 'category': 'FREQUENCY_ANOMALY', 'feature': 'cust_tx_count_1d', 'strength': 0.2,
-                'title': '📈 Any Elevated Frequency', 'description': f"{daily_tx} transactions",
+                'title': 'Any Elevated Frequency', 'description': f"{daily_tx} transactions",
                 'risk_level': 'LOW', 'context': "Multiple transactions today"
             })
         
@@ -74,7 +74,7 @@ def create_95percent_recall_justifications(df, alerts):
             enhanced_alert['confidence_score'] = probability
             enhanced_alerts.append(enhanced_alert)
     
-    print(f"✅ ULTRA-AGGRESSIVE: {len(alerts)} → {len(enhanced_alerts)} alerts")
+    print(f"ULTRA-AGGRESSIVE: {len(alerts)} → {len(enhanced_alerts)} alerts")
     return enhanced_alerts, {}
 
 def get_datarobot_predictions(test_df):
@@ -106,7 +106,7 @@ def get_datarobot_predictions(test_df):
                     record[col] = ""
         payload.append(record)
     
-    print(f"📡 Getting predictions for {len(payload)} records...")
+    print(f"Getting predictions for {len(payload)} records...")
     try:
         response = requests.post(url, headers=headers, json=payload, timeout=120)
         if response.status_code == 200:
@@ -138,13 +138,13 @@ def get_datarobot_predictions(test_df):
                         'step': test_df.iloc[i].get('step', 'Unknown')
                     })
             
-            print(f"✅ Received {len(alerts)} alerts from {len(results)} predictions")
+            print(f"Received {len(alerts)} alerts from {len(results)} predictions")
             return alerts, all_predictions
         else:
-            print(f"❌ API Error: {response.status_code}")
+            print(f"API Error: {response.status_code}")
             return [], []
     except Exception as e:
-        print(f"❌ Prediction error: {e}")
+        print(f"Prediction error: {e}")
         return [], []
 
 @app.route('/')
@@ -189,7 +189,7 @@ def upload_file():
             precision = tp / (tp + fp) if (tp + fp) > 0 else 0
             recall = tp / (tp + fn) if (tp + fn) > 0 else 0
             
-            # FIXED: Convert alerts to match HTML expected structure
+            # Convert alerts to match HTML expected structure
             alerts_data = []
             for alert in enhanced_alerts[:50]:  # Limit to 50 alerts
                 # Convert probability to decimal for sorting
@@ -206,7 +206,7 @@ def upload_file():
                     'risk_factors': f"{alert['risk_factors']} risk factors detected",
                     'justifications': [
                         {
-                            'title': j.get('title', 'Risk Factor').replace('🎯', '').replace('💰', '').replace('⚡', '').replace('🆕', '').replace('📈', '').strip(),
+                            'title': j.get('title', 'Risk Factor').strip(),
                             'description': j.get('description', ''),
                             'strength': j.get('strength', 0.5),
                             'risk_level': j.get('risk_level', 'MEDIUM')
@@ -216,7 +216,7 @@ def upload_file():
                 }
                 alerts_data.append(alert_data)
             
-            # FIXED: Dashboard data with correct field names
+            # Dashboard data with correct field names
             dashboard_data = {
                 'recall': f"{recall:.1%}",
                 'precision': f"{precision:.1%}",
