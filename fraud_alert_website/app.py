@@ -36,40 +36,43 @@ def load_or_train_model():
     except Exception as e:
         print(f"❌ Could not load existing model: {e}")
     
-    # Train new model
+        # Train new model
     try:
         print("🔄 Training new fraud detection model...")
         
-        # Use a sample dataset for training if no file exists
-        # In production, you would load your actual training data
-        print("📊 Creating sample training data...")
-        
-        # Create synthetic training data that matches your expected features
-        n_samples = 10000
-        np.random.seed(42)
-        
-        # Create a DataFrame with the expected features
-        training_data = {
-            'age': np.random.randint(18, 80, n_samples),
-            'amount': np.random.exponential(50, n_samples),
-            'amount_over_cust_median_7d': np.random.normal(0, 10, n_samples),
-            'category': np.random.choice(['es_transportation', 'es_food', 'es_other'], n_samples),
-            'cust_median_amt_7d': np.random.exponential(30, n_samples),
-            'cust_tx_count_1d': np.random.poisson(1, n_samples),
-            'cust_tx_count_7d': np.random.poisson(5, n_samples),
-            'cust_unique_merchants_30d': np.random.poisson(3, n_samples),
-            'customer': [f'cust_{i}' for i in range(n_samples)],
-            'first_time_pair': np.random.choice([0, 1], n_samples, p=[0.7, 0.3]),
-            'gender': np.random.choice(['M', 'F'], n_samples),
-            'log_amount': np.log(np.random.exponential(50, n_samples) + 1),
-            'mch_tx_count_1d': np.random.poisson(10, n_samples),
-            'mch_unique_customers_7d': np.random.poisson(15, n_samples),
-            'step': np.random.randint(1, 100, n_samples),
-            'time_since_last_pair_tx': np.random.exponential(20, n_samples),
-            'fraud': np.random.choice([0, 1], n_samples, p=[0.98, 0.02])  # 2% fraud rate
-        }
-        
-        df = pd.DataFrame(training_data)
+        # Try to load your actual training data
+        training_file = "BankSim_Fraud_10Features_Sample.csv"
+        if os.path.exists(training_file):
+            print(f"📊 Loading training data from {training_file}...")
+            df = pd.read_csv(training_file)
+            df = df.fillna(0)
+        else:
+            # Fallback to synthetic data if file not found
+            print("❌ Training file not found, creating sample data...")
+            n_samples = 5000  # Smaller sample for faster training
+            np.random.seed(42)
+            
+            training_data = {
+                'age': np.random.randint(18, 80, n_samples),
+                'amount': np.random.exponential(50, n_samples),
+                'amount_over_cust_median_7d': np.random.normal(0, 10, n_samples),
+                'category': np.random.choice(['es_transportation', 'es_food', 'es_other'], n_samples),
+                'cust_median_amt_7d': np.random.exponential(30, n_samples),
+                'cust_tx_count_1d': np.random.poisson(1, n_samples),
+                'cust_tx_count_7d': np.random.poisson(5, n_samples),
+                'cust_unique_merchants_30d': np.random.poisson(3, n_samples),
+                'customer': [f'cust_{i}' for i in range(n_samples)],
+                'first_time_pair': np.random.choice([0, 1], n_samples, p=[0.7, 0.3]),
+                'gender': np.random.choice(['M', 'F'], n_samples),
+                'log_amount': np.log(np.random.exponential(50, n_samples) + 1),
+                'mch_tx_count_1d': np.random.poisson(10, n_samples),
+                'mch_unique_customers_7d': np.random.poisson(15, n_samples),
+                'step': np.random.randint(1, 100, n_samples),
+                'time_since_last_pair_tx': np.random.exponential(20, n_samples),
+                'fraud': np.random.choice([0, 1], n_samples, p=[0.98, 0.02])  # 2% fraud rate
+            }
+            
+            df = pd.DataFrame(training_data)
         
         print("Dataset shape:", df.shape)
         print("Columns:", df.columns.tolist())
@@ -390,3 +393,4 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
