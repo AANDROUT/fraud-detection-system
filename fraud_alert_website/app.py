@@ -3,240 +3,149 @@ import pandas as pd
 import numpy as np
 import os
 from werkzeug.utils import secure_filename
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import precision_recall_curve
-import xgboost as xgb
-import joblib
-import warnings
-import glob
-warnings.filterwarnings('ignore')
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler, LabelEncoder
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads/'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
-# Global variables for the model and threshold
-fraud_model = None
-model_threshold = 0.01  # Default threshold
+# Global model variables
+model = None
+scaler = None
+feature_columns = None
+label_encoders = {}
 
-def load_full_dataset():
-    """Load the full dataset from all 6 part files"""
-    print("📂 Loading full dataset from part files...")
-    
-    all_parts = []
-    for i in range(1, 7):  # Parts 1 to 6
-        filename = f'BankSim_part_{i}.csv'
-        if os.path.exists(filename):
-            print(f"   Loading {filename}...")
-            part_df = pd.read_csv(filename)
-            all_parts.append(part_df)
-        else:
-            print(f"❌ Warning: {filename} not found")
-    
-    if not all_parts:
-        raise FileNotFoundError("No part files found!")
-    
-    full_df = pd.concat(all_parts, ignore_index=True)
-    print(f"✅ Full dataset loaded: {len(full_df)} records")
-    return full_df
-
-def load_or_train_model():
-    """Load or train the fraud detection model using full dataset"""
-    global fraud_model, model_threshold
-    
-    model_path = 'fraud_model.pkl'
-    threshold_path = 'model_threshold.pkl'
+def initialize_model():
+    """Initialize the model using pre-engineered features from BankSim parts"""
+    global model, scaler, feature_columns
     
     try:
-        if os.path.exists(model_path) and os.path.exists(threshold_path):
-            fraud_model = joblib.load(model_path)
-            model_threshold = joblib.load(threshold_path)
-            print("✅ Model loaded successfully")
-            return
-    except Exception as e:
-        print(f"❌ Could not load existing model: {e}")
-    
-    try:
-        print("🔄 Training new fraud detection model with FULL dataset...")
+        print("🔄 Initializing Fraud Detection Model...")
         
-        # Load the full dataset from part files
-        df = load_full_dataset()
-        df = df.fillna(0)
+        # Load and combine all BankSim parts (which already have engineered features)
+        parts = []
+        for i in range(1, 7):
+            try:
+                part_df = pd.read_csv(f"BankSim_part_{i}.csv")
+                parts.append(part_df)
+                print(f"✅ Loaded BankSim_part_{i}.csv with {len(part_df)} records")
+                print(f"   Columns: {list(part_df.columns)}")
+            except FileNotFoundError:
+                print(f"⚠️ BankSim_part_{i}.csv not found, skipping...")
+                continue
         
-        print("Dataset shape:", df.shape)
-        print("Columns:", df.columns.tolist())
-        print("Fraud distribution:", df['fraud'].value_counts())
+        if not parts:
+            raise Exception("No BankSim data files found")
         
-        X = df.drop(columns=["fraud"])
-        y = df["fraud"]
+        # Combine datasets
+        df = pd.concat(parts, ignore_index=True)
+        print(f"📊 Total dataset: {len(df)} records")
         
-        categorical_cols = ['category', 'customer', 'gender', 'merchant']
+        # Define feature columns (same as your DataRobot requirements)
+        feature_columns = [
+            'age', 'amount', 'amount_over_cust_median_7d', 'category', 
+            'cust_median_amt_7d', 'cust_tx_count_1d', 'cust_tx_count_7d', 
+            'cust_unique_merchants_30d', 'customer', 'first_time_pair', 'gender', 
+            'log_amount', 'mch_tx_count_1d', 'mch_unique_customers_7d', 
+            'step', 'time_since_last_pair_tx'
+        ]
+        
+        # Check which features actually exist in the data
+        available_features = [col for col in feature_columns if col in df.columns]
+        print(f"🔍 Available features: {available_features}")
+        
+        # Prepare features
+        X = df[available_features].copy()
+        
+        # Handle categorical variables
+        categorical_cols = ['category', 'gender', 'customer']
         for col in categorical_cols:
             if col in X.columns:
-                if X[col].dtype == 'object' or X[col].dtype.name == 'category':
-                    X[col] = X[col].astype('category').cat.codes
+                label_encoders[col] = LabelEncoder()
+                X[col] = label_encoders[col].fit_transform(X[col].astype(str))
         
-        if 'age' in X.columns and X['age'].dtype == 'object':
-            X['age'] = pd.to_numeric(X['age'], errors='coerce').fillna(0)
+        # Handle missing values
+        X = X.fillna(0)
         
-        for col in X.columns:
-            if X[col].dtype == 'object':
-                X[col] = pd.to_numeric(X[col], errors='coerce').fillna(0)
+        # Create target variable (assuming 'fraud' column exists)
+        if 'fraud' not in df.columns:
+            raise Exception("'fraud' column not found in dataset")
         
-        X_train, X_temp, y_train, y_temp = train_test_split(
-            X, y, test_size=0.30, stratify=y, random_state=42
-        )
-        X_val, X_test, y_val, y_test = train_test_split(
-            X_temp, y_temp, test_size=0.50, stratify=y_temp, random_state=42
-        )
+        y = df['fraud'].copy()
         
-        print("Train size:", X_train.shape, "Validation size:", X_val.shape)
+        # Scale features
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
         
-        ratio = (y_train == 0).sum() / (y_train == 1).sum() if (y_train == 1).sum() > 0 else 1
-        print(f"Class imbalance ratio: {ratio:.2f}")
-        
-        fraud_model = xgb.XGBClassifier(
+        # Train Random Forest model (your 3rd code model)
+        model = RandomForestClassifier(
             n_estimators=100,
-            learning_rate=0.05,
-            max_depth=6,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            eval_metric='aucpr',
-            tree_method='hist',
-            scale_pos_weight=ratio,
+            max_depth=20,
+            min_samples_split=10,
+            min_samples_leaf=5,
             random_state=42,
-            enable_categorical=True
+            class_weight='balanced'
         )
         
-        fraud_model.fit(
-            X_train, y_train,
-            eval_set=[(X_val, y_val)],
-            verbose=False
-        )
+        model.fit(X_scaled, y)
         
-        val_proba = fraud_model.predict_proba(X_val)[:, 1]
-        prec, rec, thr = precision_recall_curve(y_val, val_proba)
-        f1 = 2 * prec * rec / (prec + rec + 1e-9)
-        best = f1.argmax()
-        model_threshold = float(thr[max(best - 1, 0)]) if len(thr) > 0 else 0.15
-        
-        print(f"✅ Model trained successfully with threshold: {model_threshold:.3f}")
-        
-        joblib.dump(fraud_model, model_path)
-        joblib.dump(model_threshold, threshold_path)
+        print(f"✅ Model trained successfully! Fraud rate in training: {y.mean():.3f}")
+        feature_columns = available_features  # Update with actual available features
+        return True
         
     except Exception as e:
-        print(f"❌ Error training model: {e}")
-        print("🔄 Falling back to logistic regression...")
-        
-        # Use a smaller sample for fallback to avoid memory issues
-        sample_df = df.sample(min(10000, len(df)), random_state=42)
-        X_sample = sample_df.drop(columns=["fraud"])
-        y_sample = sample_df["fraud"]
-        
-        # Prepare features for fallback model
-        for col in categorical_cols:
-            if col in X_sample.columns and X_sample[col].dtype == 'object':
-                X_sample[col] = X_sample[col].astype('category').cat.codes
-        
-        fraud_model = LogisticRegression(
-            solver="liblinear",
-            max_iter=1000,
-            class_weight='balanced',
-            random_state=42
-        )
-        fraud_model.fit(X_sample, y_sample)
-        model_threshold = 0.15
+        print(f"❌ Model initialization failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
 
 def get_local_predictions(test_df):
-    """Get predictions using local XGBoost model"""
-    global fraud_model, model_threshold
+    """Get predictions using the local Random Forest model (replaces DataRobot API)"""
+    global model, scaler, feature_columns
     
-    print("🔍 DEBUG: Entering get_local_predictions")
-    
-    if fraud_model is None:
-        print("🔍 DEBUG: Model is None, loading...")
-        load_or_train_model()
-    
-    # FORCE LOWER THRESHOLD
-    model_threshold = 0.01
-    print(f"🔍 USING FORCED THRESHOLD: {model_threshold}")
-    
-    print(f"🔍 Getting local predictions for {len(test_df)} records...")
+    if model is None:
+        print("❌ Model not loaded")
+        return [], []
     
     try:
-        # Prepare features (ensure we have the right columns)
-        expected_features = ['age', 'amount', 'amount_over_cust_median_7d', 'category', 
-                           'cust_median_amt_7d', 'cust_tx_count_1d', 'cust_tx_count_7d', 
-                           'cust_unique_merchants_30d', 'customer', 'first_time_pair', 
-                           'gender', 'log_amount', 'mch_tx_count_1d', 'mch_unique_customers_7d', 
-                           'merchant', 'step', 'time_since_last_pair_tx']
+        print(f"🔍 Getting local predictions for {len(test_df)} records...")
         
-        # Create a copy and fill missing columns with defaults
-        prediction_df = test_df.copy()
+        # Use available features that exist in test data
+        available_features = [col for col in feature_columns if col in test_df.columns]
         
-        for col in expected_features:
-            if col not in prediction_df.columns:
-                if col in ['amount', 'cust_tx_count_1d', 'first_time_pair', 'time_since_last_pair_tx']:
-                    prediction_df[col] = 0
-                elif col in ['age', 'cust_tx_count_7d', 'step']:
-                    prediction_df[col] = 1
-                elif col in ['amount_over_cust_median_7d', 'cust_median_amt_7d', 'log_amount']:
-                    prediction_df[col] = 0.0
-                elif col in ['customer', 'gender', 'merchant']:
-                    prediction_df[col] = "unknown"
-                elif col == 'category':
-                    prediction_df[col] = "es_other"
-                else:
-                    prediction_df[col] = ""
+        # Prepare features
+        X_test = test_df[available_features].copy()
         
-        # Ensure we only use the expected features in the right order
-        prediction_df = prediction_df[expected_features]
+        # Handle categorical variables
+        for col in ['category', 'gender', 'customer']:
+            if col in X_test.columns and col in label_encoders:
+                # Transform using pre-fitted label encoders
+                X_test[col] = label_encoders[col].transform(X_test[col].astype(str))
         
-        # Convert categorical variables if needed
-        for col in ['category', 'customer', 'gender', 'merchant']:
-            if col in prediction_df.columns:
-                if prediction_df[col].dtype == 'object' or prediction_df[col].dtype.name == 'category':
-                    prediction_df[col] = prediction_df[col].astype('category').cat.codes
+        # Handle missing values
+        X_test = X_test.fillna(0)
         
-        # Convert age to numeric if it's object type
-        if 'age' in prediction_df.columns and prediction_df['age'].dtype == 'object':
-            prediction_df['age'] = pd.to_numeric(prediction_df['age'], errors='coerce').fillna(0)
-        
-        # Convert all columns to numeric to avoid type issues
-        for col in prediction_df.columns:
-            if prediction_df[col].dtype == 'object':
-                prediction_df[col] = pd.to_numeric(prediction_df[col], errors='coerce').fillna(0)
+        # Scale features
+        X_test_scaled = scaler.transform(X_test)
         
         # Get predictions
-        fraud_proba = fraud_model.predict_proba(prediction_df)[:, 1]
-        
-        # ADD DEBUG INFO HERE
-        print("🔍 ENCODING VERIFICATION:")
-        print(f"Unique categories in batch data: {prediction_df['category'].unique()}")
-        print(f"Sample category values: {prediction_df['category'].head(5).tolist()}")
-        print(f"🔍 Prediction range: {fraud_proba.min():.3f} to {fraud_proba.max():.3f}")
-        print(f"🔍 Predictions above 0.1: {(fraud_proba > 0.1).sum()}")
-        print(f"🔍 Predictions above 0.01: {(fraud_proba > 0.01).sum()}")
-        print(f"🔍 Current threshold: {model_threshold}")
-        print(f"🔍 Alerts that will be generated: {(fraud_proba > model_threshold).sum()}")
+        fraud_probabilities = model.predict_proba(X_test_scaled)[:, 1]
         
         alerts = []
         all_predictions = []
         
-        for i, prob in enumerate(fraud_proba):
-            actual_fraud = test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
+        for i, prob in enumerate(fraud_probabilities):
             all_predictions.append({
                 'record_id': i,
-                'fraud_probability': float(prob),
-                'actual_fraud': actual_fraud
+                'fraud_probability': prob,
+                'actual_fraud': test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
             })
             
-            if prob > model_threshold:
+            if prob > 0.15:  # Same threshold as your original code
                 alerts.append({
                     'record_id': i,
-                    'fraud_probability': float(prob),
+                    'fraud_probability': prob,
                     'raw_data': test_df.iloc[i].to_dict(),
                     'risk_level': 'CRITICAL' if prob > 0.95 else 'HIGH' if prob > 0.8 else 'MEDIUM',
                     'customer_id': test_df.iloc[i].get('customer', 'Unknown'),
@@ -244,15 +153,17 @@ def get_local_predictions(test_df):
                     'step': test_df.iloc[i].get('step', 'Unknown')
                 })
         
-        print(f"✅ Local model: {len(alerts)} alerts from {len(fraud_proba)} predictions (threshold: {model_threshold:.3f})")
+        print(f"✅ Generated {len(alerts)} alerts from {len(fraud_probabilities)} predictions")
         return alerts, all_predictions
         
     except Exception as e:
         print(f"❌ Local prediction error: {e}")
+        import traceback
+        traceback.print_exc()
         return [], []
 
 def create_95percent_recall_justifications(df, alerts):
-    """ULTRA-AGGRESSIVE for 90%+ recall"""
+    """ULTRA-AGGRESSIVE for 90%+ recall - EXACT SAME AS YOUR ORIGINAL CODE"""
     print("🔍 ULTRA-AGGRESSIVE 90%+ SYSTEM")
     
     enhanced_alerts = []
@@ -325,20 +236,10 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    # FORCE OUTPUT - This should definitely appear
-    import sys
-    print("🎯 UPLOAD FUNCTION WAS CALLED!", file=sys.stderr)
-    sys.stderr.flush()  # Force the output
-    
     if 'file' not in request.files:
-        print("❌ DEBUG: No file in request.files", file=sys.stderr)
-        sys.stderr.flush()
         return jsonify({'success': False, 'error': 'No file uploaded'})
     
     file = request.files['file']
-    print(f"🎯 DEBUG: Processing file: {file.filename}", file=sys.stderr)
-    sys.stderr.flush()
-    
     if file.filename == '':
         return jsonify({'success': False, 'error': 'No file selected'})
     
@@ -346,28 +247,9 @@ def upload_file():
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
-        print(f"✅ UPLOAD: File saved as {filepath}", file=sys.stderr)
-        sys.stderr.flush()
-        
-        # ADD THIS DEBUG - Check if file actually exists and has content
-        print(f"🔍 DEBUG: File exists: {os.path.exists(filepath)}")
-        print(f"🔍 DEBUG: File size: {os.path.getsize(filepath)} bytes")
         
         try:
-            # ADD THIS - Try different encoding if needed
-            try:
-                df = pd.read_csv(filepath)
-            except UnicodeDecodeError:
-                df = pd.read_csv(filepath, encoding='latin-1')
-            
-            print(f"📊 UPLOAD: File loaded - {df.shape[0]} rows, {df.shape[1]} columns")
-            print(f"📊 UPLOAD: Columns: {df.columns.tolist()}")
-            
-            # ADD THIS CHECK - Make sure file has data
-            if df.empty:
-                print("❌ UPLOAD: File is empty")
-                return jsonify({'success': False, 'error': 'File is empty'})
-            
+            df = pd.read_csv(filepath)
             for col in df.columns:
                 if df[col].dtype == 'object':
                     df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x)
@@ -376,11 +258,10 @@ def upload_file():
             
             df = df.reset_index().rename(columns={'index': 'original_index'})
             
-            # Use local model instead of DataRobot
+            # USE LOCAL MODEL INSTEAD OF DATAROBOT API
             alerts, predictions = get_local_predictions(df)
             enhanced_alerts, stats = create_95percent_recall_justifications(df, alerts)
             
-            # Calculate metrics
             y_true = [pred['actual_fraud'] for pred in predictions]
             enhanced_alert_ids = set([alert['record_id'] for alert in enhanced_alerts])
             y_pred = [1 if i in enhanced_alert_ids else 0 for i in range(len(predictions))]
@@ -436,7 +317,6 @@ def upload_file():
             })
             
         except Exception as e:
-            print(f"❌ UPLOAD ERROR: {str(e)}")
             return jsonify({'success': False, 'error': f'Processing error: {str(e)}'})
     
     return jsonify({'success': False, 'error': 'Invalid file type'})
@@ -444,14 +324,14 @@ def upload_file():
 if __name__ == '__main__':
     # Create upload folder if it doesn't exist
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        print(f"📁 Creating upload folder: {app.config['UPLOAD_FOLDER']}")
         os.makedirs(app.config['UPLOAD_FOLDER'])
-    else:
-        print(f"📁 Upload folder exists: {app.config['UPLOAD_FOLDER']}")
     
-    # Load or train model on startup
-    print("🚀 Starting Flask app - loading fraud detection model...")
-    load_or_train_model()
+    # Initialize the model on startup
+    print("🚀 Starting Fraud Alert System...")
+    if initialize_model():
+        print("✅ System ready! Model loaded successfully.")
+    else:
+        print("⚠️ System started with limited functionality (no model)")
     
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
