@@ -74,7 +74,7 @@ def load_or_train_model():
             
             df = pd.DataFrame(training_data)
         
-        print("Dataset shape:", df.shape)
+               print("Dataset shape:", df.shape)
         print("Columns:", df.columns.tolist())
         print("Fraud distribution:", df['fraud'].value_counts())
         
@@ -82,10 +82,21 @@ def load_or_train_model():
         X = df.drop(columns=["fraud"])
         y = df["fraud"]
         
-        # Convert categorical variables
-        categorical_cols = ['category', 'customer', 'gender']
+        # Convert categorical variables to numeric codes
+        categorical_cols = ['category', 'customer', 'gender', 'merchant']
         for col in categorical_cols:
-            X[col] = X[col].astype('category')
+            if col in X.columns:
+                if X[col].dtype == 'object' or X[col].dtype.name == 'category':
+                    X[col] = X[col].astype('category').cat.codes
+        
+        # Convert age to numeric if it's object type
+        if 'age' in X.columns and X['age'].dtype == 'object':
+            X['age'] = pd.to_numeric(X['age'], errors='coerce').fillna(0)
+        
+        # Convert all columns to numeric to avoid type issues
+        for col in X.columns:
+            if X[col].dtype == 'object':
+                X[col] = pd.to_numeric(X[col], errors='coerce').fillna(0)
         
         # Train/test split
         X_train, X_temp, y_train, y_temp = train_test_split(
@@ -101,7 +112,7 @@ def load_or_train_model():
         ratio = (y_train == 0).sum() / (y_train == 1).sum() if (y_train == 1).sum() > 0 else 1
         print(f"Class imbalance ratio: {ratio:.2f}")
         
-        # Train XGBoost model
+        # Train XGBoost model with categorical support
         fraud_model = xgb.XGBClassifier(
             n_estimators=100,
             learning_rate=0.05,
@@ -111,7 +122,8 @@ def load_or_train_model():
             eval_metric='aucpr',
             tree_method='hist',
             scale_pos_weight=ratio,
-            random_state=42
+            random_state=42,
+            enable_categorical=True  # Add this line for categorical support
         )
         
         fraud_model.fit(
@@ -184,10 +196,20 @@ def get_local_predictions(test_df):
         # Ensure we only use the expected features in the right order
         prediction_df = prediction_df[expected_features]
         
-        # Convert categorical variables if needed
-        for col in ['category', 'customer', 'gender']:
+               # Convert categorical variables if needed
+        for col in ['category', 'customer', 'gender', 'merchant']:
+            if col in prediction_df.columns:
+                if prediction_df[col].dtype == 'object' or prediction_df[col].dtype.name == 'category':
+                    prediction_df[col] = prediction_df[col].astype('category').cat.codes
+        
+        # Convert age to numeric if it's object type
+        if 'age' in prediction_df.columns and prediction_df['age'].dtype == 'object':
+            prediction_df['age'] = pd.to_numeric(prediction_df['age'], errors='coerce').fillna(0)
+        
+        # Convert all columns to numeric to avoid type issues
+        for col in prediction_df.columns:
             if prediction_df[col].dtype == 'object':
-                prediction_df[col] = prediction_df[col].astype('category')
+                prediction_df[col] = pd.to_numeric(prediction_df[col], errors='coerce').fillna(0)
         
         # Get predictions
         fraud_proba = fraud_model.predict_proba(prediction_df)[:, 1]
@@ -393,4 +415,5 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
