@@ -334,7 +334,7 @@ def upload_file():
     print(f"🎯 DEBUG: Processing file: {file.filename}", file=sys.stderr)
     sys.stderr.flush()
     
-        if file.filename == '':
+    if file.filename == '':
         return jsonify({'success': False, 'error': 'No file selected'})
     
     if file and file.filename.endswith('.csv'):
@@ -363,19 +363,16 @@ def upload_file():
                 print("❌ UPLOAD: File is empty")
                 return jsonify({'success': False, 'error': 'File is empty'})
             
-            # ... rest of your processing code
-        
-        for col in df.columns:
-            if df[col].dtype == 'object':
-                df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x)
-            if col in ['amount', 'cust_tx_count_1d', 'first_time_pair', 'time_since_last_pair_tx']:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-        
-        df = df.reset_index().rename(columns={'index': 'original_index'})
-        
-        # Use local model instead of DataRobot
-        alerts, predictions = get_local_predictions(df)
-        # ... rest of your code
+            for col in df.columns:
+                if df[col].dtype == 'object':
+                    df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x)
+                if col in ['amount', 'cust_tx_count_1d', 'first_time_pair', 'time_since_last_pair_tx']:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            
+            df = df.reset_index().rename(columns={'index': 'original_index'})
+            
+            # Use local model instead of DataRobot
+            alerts, predictions = get_local_predictions(df)
             enhanced_alerts, stats = create_95percent_recall_justifications(df, alerts)
             
             # Calculate metrics
@@ -454,5 +451,3 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
-
-
