@@ -9,6 +9,35 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads/'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
+def safe_convert_to_float(value, default=0.0):
+    """Safely convert any value to float"""
+    try:
+        if value is None or pd.isna(value):
+            return default
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            # Remove any quotes or extra characters
+            cleaned = value.strip().strip("'\"")
+            return float(cleaned) if cleaned else default
+        return default
+    except (ValueError, TypeError):
+        return default
+
+def safe_convert_to_int(value, default=0):
+    """Safely convert any value to int"""
+    try:
+        if value is None or pd.isna(value):
+            return default
+        if isinstance(value, (int, float)):
+            return int(value)
+        if isinstance(value, str):
+            cleaned = value.strip().strip("'\"")
+            return int(float(cleaned)) if cleaned else default
+        return default
+    except (ValueError, TypeError):
+        return default
+
 def create_95percent_recall_justifications(df, alerts):
     """ULTRA-AGGRESSIVE for 90%+ recall"""
     print("ULTRA-AGGRESSIVE 90%+ SYSTEM")
@@ -21,9 +50,9 @@ def create_95percent_recall_justifications(df, alerts):
         
         justifications = []
         
-        # 1. ANY CATEGORY (except most common)
-        category = record_data.get('category', '')
-        safe_categories = ['es_transportation', 'es_food']  # Only these are "safe"
+        # 1. ANY CATEGORY (except most common) - SAFE COMPARISON
+        category = str(record_data.get('category', ''))
+        safe_categories = ['es_transportation', 'es_food']
         if category not in safe_categories:
             justifications.append({
                 'category': 'CATEGORY_RISK', 'feature': 'category', 'strength': 0.4,
@@ -31,8 +60,8 @@ def create_95percent_recall_justifications(df, alerts):
                 'risk_level': 'MEDIUM', 'context': "Category may indicate higher risk"
             })
         
-        # 2. ANY AMOUNT ABOVE $30
-        amount = record_data.get('amount', 0)
+        # 2. ANY AMOUNT ABOVE $30 - SAFE CONVERSION
+        amount = safe_convert_to_float(record_data.get('amount', 0))
         if amount > 30:
             justifications.append({
                 'category': 'AMOUNT_ANOMALY', 'feature': 'amount', 'strength': 0.3,
@@ -40,8 +69,8 @@ def create_95percent_recall_justifications(df, alerts):
                 'risk_level': 'LOW', 'context': "Amount above minimum threshold"
             })
         
-        # 3. ANY RAPID TRANSACTION
-        time_since_last = record_data.get('time_since_last_pair_tx', -1)
+        # 3. ANY RAPID TRANSACTION - SAFE CONVERSION
+        time_since_last = safe_convert_to_float(record_data.get('time_since_last_pair_tx', -1))
         if time_since_last >= 0 and time_since_last < 10.0:
             justifications.append({
                 'category': 'VELOCITY_RISK', 'feature': 'time_since_last_pair_tx', 'strength': 0.3,
@@ -49,16 +78,17 @@ def create_95percent_recall_justifications(df, alerts):
                 'risk_level': 'LOW', 'context': "Rapid transaction pattern"
             })
         
-        # 4. ANY FIRST-TIME PAIR
-        if record_data.get('first_time_pair', 0) == 1:
+        # 4. ANY FIRST-TIME PAIR - SAFE CONVERSION
+        first_time_pair = safe_convert_to_int(record_data.get('first_time_pair', 0))
+        if first_time_pair == 1:
             justifications.append({
                 'category': 'RELATIONSHIP_RISK', 'feature': 'first_time_pair', 'strength': 0.3,
                 'title': 'First-Time Merchant', 'description': "New customer-merchant relationship",
                 'risk_level': 'LOW', 'context': "New customer-merchant pair"
             })
         
-        # 5. ANY FREQUENCY
-        daily_tx = record_data.get('cust_tx_count_1d', 0)
+        # 5. ANY FREQUENCY - SAFE CONVERSION
+        daily_tx = safe_convert_to_int(record_data.get('cust_tx_count_1d', 0))
         if daily_tx > 1:
             justifications.append({
                 'category': 'FREQUENCY_ANOMALY', 'feature': 'cust_tx_count_1d', 'strength': 0.2,
@@ -66,8 +96,8 @@ def create_95percent_recall_justifications(df, alerts):
                 'risk_level': 'LOW', 'context': "Multiple transactions today"
             })
         
-        # 6. CUSTOMER AGE RISK
-        age = record_data.get('age', 0)
+        # 6. CUSTOMER AGE RISK - SAFE CONVERSION
+        age = safe_convert_to_int(record_data.get('age', 0))
         if age < 25 or age > 65:
             justifications.append({
                 'category': 'AGE_RISK', 'feature': 'age', 'strength': 0.2,
@@ -75,8 +105,8 @@ def create_95percent_recall_justifications(df, alerts):
                 'risk_level': 'LOW', 'context': "Age outside typical range"
             })
         
-        # 7. AMOUNT OVER MEDIAN
-        amount_over_median = record_data.get('amount_over_cust_median_7d', 0)
+        # 7. AMOUNT OVER MEDIAN - SAFE CONVERSION
+        amount_over_median = safe_convert_to_float(record_data.get('amount_over_cust_median_7d', 0))
         if amount_over_median > 2.0:
             justifications.append({
                 'category': 'AMOUNT_DEVIATION', 'feature': 'amount_over_cust_median_7d', 'strength': 0.4,
@@ -85,9 +115,9 @@ def create_95percent_recall_justifications(df, alerts):
             })
         
         # CATCH EVERYTHING - More aggressive threshold
-        if len(justifications) >= 2 or probability > 0.10:  # Lowered threshold
+        if len(justifications) >= 2 or probability > 0.10:
             enhanced_alert = alert.copy()
-            enhanced_alert['advanced_justifications'] = justifications  # Show ALL justifications
+            enhanced_alert['advanced_justifications'] = justifications
             enhanced_alert['risk_factors'] = len(justifications)
             enhanced_alert['confidence_score'] = probability
             enhanced_alerts.append(enhanced_alert)
@@ -110,8 +140,20 @@ def get_datarobot_predictions(test_df):
         record = {}
         for col in required_columns:
             if col in test_df.columns:
-                record[col] = row[col] if not pd.isna(row[col]) else 0
+                # Safe conversion for all numeric fields
+                value = row[col]
+                if col in ['amount', 'cust_tx_count_1d', 'first_time_pair', 'time_since_last_pair_tx', 
+                          'age', 'cust_tx_count_7d', 'step', 'cust_unique_merchants_30d', 'mch_tx_count_1d', 
+                          'mch_unique_customers_7d']:
+                    record[col] = safe_convert_to_float(value, 0)
+                elif col in ['amount_over_cust_median_7d', 'cust_median_amt_7d', 'log_amount']:
+                    record[col] = safe_convert_to_float(value, 0.0)
+                elif col in ['customer', 'gender', 'category']:
+                    record[col] = str(value) if not pd.isna(value) else "unknown"
+                else:
+                    record[col] = str(value) if not pd.isna(value) else ""
             else:
+                # Default values for missing columns
                 if col in ['amount', 'cust_tx_count_1d', 'first_time_pair', 'time_since_last_pair_tx']:
                     record[col] = 0
                 elif col in ['age', 'cust_tx_count_7d', 'step']:
@@ -142,29 +184,27 @@ def get_datarobot_predictions(test_df):
                 all_predictions.append({
                     'record_id': i,
                     'fraud_probability': fraud_prob if fraud_prob else 0,
-                    'actual_fraud': test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
+                    'actual_fraud': safe_convert_to_int(test_df.iloc[i].get('fraud', 0))
                 })
                 
-                if fraud_prob and fraud_prob > 0.10:  # Lower threshold for more alerts
+                if fraud_prob and fraud_prob > 0.10:
                     alerts.append({
                         'record_id': i,
                         'fraud_probability': fraud_prob,
                         'raw_data': test_df.iloc[i].to_dict(),
                         'risk_level': 'CRITICAL' if fraud_prob > 0.95 else 'HIGH' if fraud_prob > 0.8 else 'MEDIUM',
-                        'customer_id': test_df.iloc[i].get('customer', 'Unknown'),
-                        'merchant_id': test_df.iloc[i].get('merchant', 'Unknown'),
-                        'step': test_df.iloc[i].get('step', 'Unknown')
+                        'customer_id': str(test_df.iloc[i].get('customer', 'Unknown')),
+                        'merchant_id': str(test_df.iloc[i].get('merchant', 'Unknown')),
+                        'step': str(test_df.iloc[i].get('step', 'Unknown'))
                     })
             
             print(f"Received {len(alerts)} alerts from {len(results)} predictions")
             return alerts, all_predictions
         else:
             print(f"API Error: {response.status_code}")
-            # Return mock data for testing
             return generate_mock_predictions(test_df)
     except Exception as e:
         print(f"Prediction error: {e}")
-        # Return mock data for testing
         return generate_mock_predictions(test_df)
 
 def generate_mock_predictions(df):
@@ -175,13 +215,13 @@ def generate_mock_predictions(df):
     
     for i in range(len(df)):
         # Generate realistic probabilities
-        base_prob = np.random.beta(2, 8)  # Most transactions are low risk
-        fraud_prob = min(base_prob * 10, 0.95)  # Some high-risk transactions
+        base_prob = np.random.beta(2, 8)
+        fraud_prob = min(base_prob * 10, 0.95)
         
         all_predictions.append({
             'record_id': i,
             'fraud_probability': fraud_prob,
-            'actual_fraud': df.iloc[i]['fraud'] if 'fraud' in df.columns else 0
+            'actual_fraud': safe_convert_to_int(df.iloc[i].get('fraud', 0))
         })
         
         if fraud_prob > 0.10:
@@ -190,9 +230,9 @@ def generate_mock_predictions(df):
                 'fraud_probability': fraud_prob,
                 'raw_data': df.iloc[i].to_dict(),
                 'risk_level': 'CRITICAL' if fraud_prob > 0.95 else 'HIGH' if fraud_prob > 0.8 else 'MEDIUM',
-                'customer_id': df.iloc[i].get('customer', f'CUST-{i:04d}'),
-                'merchant_id': df.iloc[i].get('merchant', f'MERCH-{i:04d}'),
-                'step': df.iloc[i].get('step', f'Step {i%10}')
+                'customer_id': str(df.iloc[i].get('customer', f'CUST-{i:04d}')),
+                'merchant_id': str(df.iloc[i].get('merchant', f'MERCH-{i:04d}')),
+                'step': str(df.iloc[i].get('step', f'Step {i%10}'))
             })
     
     print(f"Generated {len(alerts)} mock alerts")
@@ -220,12 +260,17 @@ def upload_file():
             df = pd.read_csv(filepath)
             print(f"Loaded CSV with {len(df)} rows and columns: {df.columns.tolist()}")
             
-            # Basic data cleaning
+            # Enhanced data cleaning with safe conversions
             for col in df.columns:
                 if df[col].dtype == 'object':
-                    df[col] = df[col].apply(lambda x: x.strip("'\"") if isinstance(x, str) else x)
-                if col in ['amount', 'cust_tx_count_1d', 'first_time_pair', 'time_since_last_pair_tx']:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                    df[col] = df[col].apply(lambda x: str(x).strip("'\"") if pd.notna(x) else "")
+                # Convert known numeric columns safely
+                if col in ['amount', 'age', 'cust_tx_count_1d', 'cust_tx_count_7d', 'first_time_pair', 
+                          'time_since_last_pair_tx', 'fraud', 'step', 'cust_unique_merchants_30d', 
+                          'mch_tx_count_1d', 'mch_unique_customers_7d']:
+                    df[col] = df[col].apply(lambda x: safe_convert_to_float(x, 0))
+                if col in ['amount_over_cust_median_7d', 'cust_median_amt_7d', 'log_amount']:
+                    df[col] = df[col].apply(lambda x: safe_convert_to_float(x, 0.0))
             
             df = df.reset_index().rename(columns={'index': 'original_index'})
             
@@ -235,42 +280,42 @@ def upload_file():
             
             # Calculate realistic metrics
             total_transactions = len(df)
-            fraud_cases = sum(1 for pred in predictions if pred.get('actual_fraud', 0) == 1)
+            fraud_cases = sum(1 for pred in predictions if safe_convert_to_int(pred.get('actual_fraud', 0)) == 1)
             if fraud_cases == 0:
                 # If no fraud column, estimate based on probabilities
-                fraud_cases = int(len(predictions) * 0.05)  # Assume 5% fraud rate
+                fraud_cases = int(len(predictions) * 0.05)
             
             # Calculate performance metrics
             tp = len([alert for alert in enhanced_alerts if alert['fraud_probability'] > 0.5])
             fp = len([alert for alert in enhanced_alerts if alert['fraud_probability'] <= 0.5])
-            fn = max(0, fraud_cases - tp)  # Estimate false negatives
+            fn = max(0, fraud_cases - tp)
             
             precision = tp / (tp + fp) if (tp + fp) > 0 else 0
             recall = tp / (tp + fn) if (tp + fn) > 0 else 0
             
-            # Better efficiency metric - alerts per fraud caught
+            # Better efficiency metric
             efficiency_ratio = tp / len(enhanced_alerts) if enhanced_alerts else 0
             
             # Convert alerts to match HTML expected structure
             alerts_data = []
-            for alert in enhanced_alerts:  # Show ALL alerts, not limited
-                confidence_decimal = float(alert['fraud_probability'])
+            for alert in enhanced_alerts:
+                confidence_decimal = safe_convert_to_float(alert['fraud_probability'])
                 
                 alert_data = {
-                    'record_id': int(alert['record_id']),
+                    'record_id': safe_convert_to_int(alert['record_id']),
                     'confidence': confidence_decimal,
-                    'amount': f"${alert['raw_data'].get('amount', 0):.2f}",
-                    'category': alert['raw_data'].get('category', 'Unknown'),
-                    'customer_id': alert['raw_data'].get('customer', 'Unknown'),
-                    'merchant_id': alert['raw_data'].get('merchant', 'Unknown'),
+                    'amount': f"${safe_convert_to_float(alert['raw_data'].get('amount', 0)):.2f}",
+                    'category': str(alert['raw_data'].get('category', 'Unknown')),
+                    'customer_id': str(alert['raw_data'].get('customer', 'Unknown')),
+                    'merchant_id': str(alert['raw_data'].get('merchant', 'Unknown')),
                     'step': str(alert['raw_data'].get('step', 'Unknown')),
                     'risk_factors': f"{alert['risk_factors']} risk factors detected",
                     'justifications': [
                         {
-                            'title': j.get('title', 'Risk Factor').strip(),
-                            'description': j.get('description', ''),
-                            'strength': j.get('strength', 0.5),
-                            'risk_level': j.get('risk_level', 'MEDIUM')
+                            'title': str(j.get('title', 'Risk Factor')).strip(),
+                            'description': str(j.get('description', '')),
+                            'strength': safe_convert_to_float(j.get('strength', 0.5)),
+                            'risk_level': str(j.get('risk_level', 'MEDIUM'))
                         }
                         for j in alert.get('advanced_justifications', [])
                     ]
@@ -285,7 +330,7 @@ def upload_file():
                 'fraud_cases': int(fraud_cases),
                 'alerts_generated': int(len(enhanced_alerts)),
                 'false_alerts': int(fp),
-                'alert_efficiency': f"{efficiency_ratio:.2f}"  # Ratio, not percentage
+                'alert_efficiency': f"{efficiency_ratio:.2f}"
             }
             
             print(f"Processed {len(alerts_data)} alerts, precision: {precision:.1%}, recall: {recall:.1%}")
@@ -298,8 +343,8 @@ def upload_file():
             
         except Exception as e:
             import traceback
-            print(f"Error: {str(e)}")
-            print(traceback.format_exc())
+            error_details = f"Error: {str(e)}\n{traceback.format_exc()}"
+            print(error_details)
             return jsonify({'success': False, 'error': f'Processing error: {str(e)}'})
     
     return jsonify({'success': False, 'error': 'Invalid file type'})
