@@ -4,4 +4,3 @@ numpy
 requests
 Werkzeug
 gunicorn
-os
