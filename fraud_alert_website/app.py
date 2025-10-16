@@ -320,10 +320,14 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    print("🎯 UPLOAD FUNCTION WAS CALLED!")  # ADD THIS LINE
+    print("🎯 UPLOAD FUNCTION WAS CALLED!")
     
     if 'file' not in request.files:
         return jsonify({'success': False, 'error': 'No file uploaded'})
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'success': False, 'error': 'No file selected'})
     
     if file and file.filename.endswith('.csv'):
         filename = secure_filename(file.filename)
@@ -335,6 +339,13 @@ def upload_file():
             df = pd.read_csv(filepath)
             print(f"📊 UPLOAD: File loaded - {df.shape[0]} rows, {df.shape[1]} columns")
             print(f"📊 UPLOAD: Columns: {df.columns.tolist()}")
+            
+            # ADD THIS CHECK - Make sure file has data
+            if df.empty:
+                print("❌ UPLOAD: File is empty")
+                return jsonify({'success': False, 'error': 'File is empty'})
+            
+            # Rest of your existing processing code...
             for col in df.columns:
                 if df[col].dtype == 'object':
                     df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x)
@@ -420,6 +431,7 @@ if __name__ == '__main__':
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 
