@@ -1,7 +1,5 @@
-flask
+Flask
 pandas
 numpy
-scikit-learn
-xgboost
-joblib
-werkzeug
+requests
+Werkzeug
