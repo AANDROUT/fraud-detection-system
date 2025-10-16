@@ -1,169 +1,16 @@
 from flask import Flask, render_template, request, jsonify
 import pandas as pd
 import numpy as np
+import requests
 import os
 from werkzeug.utils import secure_filename
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.preprocessing import StandardScaler, LabelEncoder
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads/'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
-# Global model variables
-model = None
-scaler = None
-feature_columns = None
-label_encoders = {}
-
-def initialize_model():
-    """Initialize the model using pre-engineered features from BankSim parts"""
-    global model, scaler, feature_columns
-    
-    try:
-        print("🔄 Initializing Fraud Detection Model...")
-        
-        # Load and combine all BankSim parts (which already have engineered features)
-        parts = []
-        for i in range(1, 7):
-            try:
-                part_df = pd.read_csv(f"BankSim_part_{i}.csv")
-                parts.append(part_df)
-                print(f"✅ Loaded BankSim_part_{i}.csv with {len(part_df)} records")
-                print(f"   Columns: {list(part_df.columns)}")
-            except FileNotFoundError:
-                print(f"⚠️ BankSim_part_{i}.csv not found, skipping...")
-                continue
-        
-        if not parts:
-            raise Exception("No BankSim data files found")
-        
-        # Combine datasets
-        df = pd.concat(parts, ignore_index=True)
-        print(f"📊 Total dataset: {len(df)} records")
-        
-        # Define feature columns (same as your DataRobot requirements)
-        feature_columns = [
-            'age', 'amount', 'amount_over_cust_median_7d', 'category', 
-            'cust_median_amt_7d', 'cust_tx_count_1d', 'cust_tx_count_7d', 
-            'cust_unique_merchants_30d', 'customer', 'first_time_pair', 'gender', 
-            'log_amount', 'mch_tx_count_1d', 'mch_unique_customers_7d', 
-            'step', 'time_since_last_pair_tx'
-        ]
-        
-        # Check which features actually exist in the data
-        available_features = [col for col in feature_columns if col in df.columns]
-        print(f"🔍 Available features: {available_features}")
-        
-        # Prepare features
-        X = df[available_features].copy()
-        
-        # Handle categorical variables
-        categorical_cols = ['category', 'gender', 'customer']
-        for col in categorical_cols:
-            if col in X.columns:
-                label_encoders[col] = LabelEncoder()
-                X[col] = label_encoders[col].fit_transform(X[col].astype(str))
-        
-        # Handle missing values
-        X = X.fillna(0)
-        
-        # Create target variable (assuming 'fraud' column exists)
-        if 'fraud' not in df.columns:
-            raise Exception("'fraud' column not found in dataset")
-        
-        y = df['fraud'].copy()
-        
-        # Scale features
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
-        
-        # Train Random Forest model (your 3rd code model)
-        model = RandomForestClassifier(
-            n_estimators=100,
-            max_depth=20,
-            min_samples_split=10,
-            min_samples_leaf=5,
-            random_state=42,
-            class_weight='balanced'
-        )
-        
-        model.fit(X_scaled, y)
-        
-        print(f"✅ Model trained successfully! Fraud rate in training: {y.mean():.3f}")
-        feature_columns = available_features  # Update with actual available features
-        return True
-        
-    except Exception as e:
-        print(f"❌ Model initialization failed: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
-
-def get_local_predictions(test_df):
-    """Get predictions using the local Random Forest model (replaces DataRobot API)"""
-    global model, scaler, feature_columns
-    
-    if model is None:
-        print("❌ Model not loaded")
-        return [], []
-    
-    try:
-        print(f"🔍 Getting local predictions for {len(test_df)} records...")
-        
-        # Use available features that exist in test data
-        available_features = [col for col in feature_columns if col in test_df.columns]
-        
-        # Prepare features
-        X_test = test_df[available_features].copy()
-        
-        # Handle categorical variables
-        for col in ['category', 'gender', 'customer']:
-            if col in X_test.columns and col in label_encoders:
-                # Transform using pre-fitted label encoders
-                X_test[col] = label_encoders[col].transform(X_test[col].astype(str))
-        
-        # Handle missing values
-        X_test = X_test.fillna(0)
-        
-        # Scale features
-        X_test_scaled = scaler.transform(X_test)
-        
-        # Get predictions
-        fraud_probabilities = model.predict_proba(X_test_scaled)[:, 1]
-        
-        alerts = []
-        all_predictions = []
-        
-        for i, prob in enumerate(fraud_probabilities):
-            all_predictions.append({
-                'record_id': i,
-                'fraud_probability': prob,
-                'actual_fraud': test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
-            })
-            
-            if prob > 0.15:  # Same threshold as your original code
-                alerts.append({
-                    'record_id': i,
-                    'fraud_probability': prob,
-                    'raw_data': test_df.iloc[i].to_dict(),
-                    'risk_level': 'CRITICAL' if prob > 0.95 else 'HIGH' if prob > 0.8 else 'MEDIUM',
-                    'customer_id': test_df.iloc[i].get('customer', 'Unknown'),
-                    'merchant_id': test_df.iloc[i].get('merchant', 'Unknown'),
-                    'step': test_df.iloc[i].get('step', 'Unknown')
-                })
-        
-        print(f"✅ Generated {len(alerts)} alerts from {len(fraud_probabilities)} predictions")
-        return alerts, all_predictions
-        
-    except Exception as e:
-        print(f"❌ Local prediction error: {e}")
-        import traceback
-        traceback.print_exc()
-        return [], []
-
 def create_95percent_recall_justifications(df, alerts):
-    """ULTRA-AGGRESSIVE for 90%+ recall - EXACT SAME AS YOUR ORIGINAL CODE"""
+    """ULTRA-AGGRESSIVE for 90%+ recall"""
     print("🔍 ULTRA-AGGRESSIVE 90%+ SYSTEM")
     
     enhanced_alerts = []
@@ -230,6 +77,76 @@ def create_95percent_recall_justifications(df, alerts):
     print(f"✅ ULTRA-AGGRESSIVE: {len(alerts)} → {len(enhanced_alerts)} alerts")
     return enhanced_alerts, {}
 
+def get_datarobot_predictions(test_df):
+    """Get predictions from DataRobot API"""
+    API_KEY = "NjhlYzZiODMxNDNkZGRiNzBkMGZmNDBkOjV6S3cxelZGUDRxZUY4MWpiNXR0SkFCSWpKMVRtQVR0cENSdVJwMFZWTWM9"
+    DEPLOYMENT_ID = "68ec56909821c3a55f1c04aa"
+    
+    url = f"https://app.datarobot.com/api/v2/deployments/{DEPLOYMENT_ID}/predictions"
+    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
+    
+    required_columns = ['age', 'amount', 'amount_over_cust_median_7d', 'category', 'cust_median_amt_7d', 'cust_tx_count_1d', 'cust_tx_count_7d', 'cust_unique_merchants_30d', 'customer', 'first_time_pair', 'gender', 'log_amount', 'mch_tx_count_1d', 'mch_unique_customers_7d', 'step', 'time_since_last_pair_tx']
+    
+    payload = []
+    for _, row in test_df.iterrows():
+        record = {}
+        for col in required_columns:
+            if col in test_df.columns:
+                record[col] = row[col] if not pd.isna(row[col]) else 0
+            else:
+                if col in ['amount', 'cust_tx_count_1d', 'first_time_pair', 'time_since_last_pair_tx']:
+                    record[col] = 0
+                elif col in ['age', 'cust_tx_count_7d', 'step']:
+                    record[col] = 1
+                elif col in ['amount_over_cust_median_7d', 'cust_median_amt_7d', 'log_amount']:
+                    record[col] = 0.0
+                elif col in ['customer', 'gender']:
+                    record[col] = "unknown"
+                else:
+                    record[col] = ""
+        payload.append(record)
+    
+    print(f"📡 Getting predictions for {len(payload)} records...")
+    try:
+        response = requests.post(url, headers=headers, json=payload, timeout=120)
+        if response.status_code == 200:
+            results = response.json()["data"]
+            alerts = []
+            all_predictions = []
+            
+            for i, item in enumerate(results):
+                fraud_prob = None
+                for pred_val in item["predictionValues"]:
+                    if pred_val["label"] == 1:
+                        fraud_prob = pred_val["value"]
+                        break
+                
+                all_predictions.append({
+                    'record_id': i,
+                    'fraud_probability': fraud_prob,
+                    'actual_fraud': test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
+                })
+                
+                if fraud_prob and fraud_prob > 0.15:
+                    alerts.append({
+                        'record_id': i,
+                        'fraud_probability': fraud_prob,
+                        'raw_data': test_df.iloc[i].to_dict(),
+                        'risk_level': 'CRITICAL' if fraud_prob > 0.95 else 'HIGH' if fraud_prob > 0.8 else 'MEDIUM',
+                        'customer_id': test_df.iloc[i].get('customer', 'Unknown'),
+                        'merchant_id': test_df.iloc[i].get('merchant', 'Unknown'),
+                        'step': test_df.iloc[i].get('step', 'Unknown')
+                    })
+            
+            print(f"✅ Received {len(alerts)} alerts from {len(results)} predictions")
+            return alerts, all_predictions
+        else:
+            print(f"❌ API Error: {response.status_code}")
+            return [], []
+    except Exception as e:
+        print(f"❌ Prediction error: {e}")
+        return [], []
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -258,8 +175,7 @@ def upload_file():
             
             df = df.reset_index().rename(columns={'index': 'original_index'})
             
-            # USE LOCAL MODEL INSTEAD OF DATAROBOT API
-            alerts, predictions = get_local_predictions(df)
+            alerts, predictions = get_datarobot_predictions(df)
             enhanced_alerts, stats = create_95percent_recall_justifications(df, alerts)
             
             y_true = [pred['actual_fraud'] for pred in predictions]
@@ -273,14 +189,15 @@ def upload_file():
             precision = tp / (tp + fp) if (tp + fp) > 0 else 0
             recall = tp / (tp + fn) if (tp + fn) > 0 else 0
             
-            # Convert alerts to match HTML expected structure
+            # FIXED: Convert alerts to match HTML expected structure
             alerts_data = []
             for alert in enhanced_alerts[:50]:  # Limit to 50 alerts
+                # Convert probability to decimal for sorting
                 confidence_decimal = float(alert['fraud_probability'])
                 
                 alert_data = {
                     'record_id': int(alert['record_id']),
-                    'confidence': confidence_decimal,
+                    'confidence': confidence_decimal,  # Use decimal for sorting
                     'amount': f"${alert['raw_data'].get('amount', 0):.2f}",
                     'category': alert['raw_data'].get('category', 'Unknown'),
                     'customer_id': alert['raw_data'].get('customer', 'Unknown'),
@@ -299,7 +216,7 @@ def upload_file():
                 }
                 alerts_data.append(alert_data)
             
-            # Dashboard data with correct field names
+            # FIXED: Dashboard data with correct field names
             dashboard_data = {
                 'recall': f"{recall:.1%}",
                 'precision': f"{precision:.1%}",
@@ -326,13 +243,7 @@ if __name__ == '__main__':
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         os.makedirs(app.config['UPLOAD_FOLDER'])
     
-    # Initialize the model on startup
-    print("🚀 Starting Fraud Alert System...")
-    if initialize_model():
-        print("✅ System ready! Model loaded successfully.")
-    else:
-        print("⚠️ System started with limited functionality (no model)")
-    
     # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
+
     app.run(host='0.0.0.0', port=port, debug=False)
