@@ -100,14 +100,6 @@
             border-radius: 5px;
             margin-right: 10px;
         }
-        .summary {
-            background: #001f3f;
-            color: white;
-            padding: 10px;
-            border-radius: 5px;
-            margin: 10px 0;
-            font-weight: bold;
-        }
         .confidence-badge {
             display: inline-block;
             padding: 3px 8px;
@@ -172,6 +164,13 @@
                     body: formData
                 });
 
+                // Check if response is JSON
+                const contentType = response.headers.get('content-type');
+                if (!contentType || !contentType.includes('application/json')) {
+                    const text = await response.text();
+                    throw new Error(`Server returned HTML instead of JSON. Status: ${response.status}. Response: ${text.substring(0, 200)}...`);
+                }
+
                 const data = await response.json();
                 
                 if (data.success) {
@@ -179,22 +178,23 @@
                     displayDashboard(data.dashboard);
                     displayAlerts(data.alerts);
                 } else {
-                    statusDiv.innerHTML = `<span style="color: red;">${data.error}</span>`;
+                    statusDiv.innerHTML = `<span style="color: red;">Error: ${data.error}</span>`;
                 }
             } catch (error) {
-                statusDiv.innerHTML = `<span style="color: red;">Upload failed: ${error}</span>`;
+                console.error('Upload error:', error);
+                statusDiv.innerHTML = `<span style="color: red;">Upload failed: ${error.message}</span>`;
             }
         }
 
         function displayDashboard(dashboard) {
             const metricsDiv = document.getElementById('metrics');
             metricsDiv.innerHTML = `
-                <div class="metric-card ${dashboard.recall.replace('%', '') > 90 ? 'good' : 'warning'}">
+                <div class="metric-card ${parseFloat(dashboard.recall) > 90 ? 'good' : 'warning'}">
                     <h4>Fraud Detection Rate</h4>
                     <h2>${dashboard.recall}</h2>
                     <small>${dashboard.fraud_caught}/${dashboard.fraud_cases} fraud cases caught</small>
                 </div>
-                <div class="metric-card ${dashboard.precision.replace('%', '') > 80 ? 'good' : 'warning'}">
+                <div class="metric-card ${parseFloat(dashboard.precision) > 80 ? 'good' : 'warning'}">
                     <h4>Precision</h4>
                     <h2>${dashboard.precision}</h2>
                     <small>Alert accuracy rate</small>
@@ -241,44 +241,4 @@
             lowContainer.innerHTML = '';
             
             if (lowConfidenceAlerts.length === 0) {
-                lowContainer.innerHTML = '<p>No low confidence alerts to display.</p>';
-            } else {
-                lowConfidenceAlerts.forEach(alert => {
-                    const alertDiv = document.createElement('div');
-                    alertDiv.className = 'alert low-confidence';
-                    alertDiv.innerHTML = createAlertHTML(alert);
-                    lowContainer.appendChild(alertDiv);
-                });
-            }
-
-            document.getElementById('alertsSection').style.display = 'block';
-        }
-
-        function createAlertHTML(alert) {
-            const confidencePercent = Math.round(alert.confidence * 100);
-            const badgeClass = alert.confidence >= 0.7 ? 'high-badge' : alert.confidence >= 0.5 ? 'medium-badge' : 'low-badge';
-            const badgeText = alert.confidence >= 0.7 ? 'HIGH' : alert.confidence >= 0.5 ? 'MEDIUM' : 'LOW';
-            
-            return `
-                <h4>
-                    Alert #${alert.record_id} 
-                    <span class="confidence-badge ${badgeClass}">${badgeText}</span>
-                </h4>
-                <p><strong>Confidence:</strong> ${confidencePercent}%</p>
-                <p><strong>Amount:</strong> ${alert.amount} | <strong>Category:</strong> ${alert.category}</p>
-                <p><strong>Customer:</strong> ${alert.customer_id} | <strong>Merchant:</strong> ${alert.merchant_id} | <strong>Step:</strong> ${alert.step}</p>
-                <p><strong>Risk Factors:</strong> ${alert.risk_factors}</p>
-                <div class="justifications">
-                    ${alert.justifications.map(j => `
-                        <div class="justification">
-                            <strong>${j.title}</strong><br>
-                            ${j.description}<br>
-                            <small>Strength: ${j.strength.toFixed(1)} | Risk Level: ${j.risk_level}</small>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        }
-    </script>
-</body>
-</html>
+                lowContainer
