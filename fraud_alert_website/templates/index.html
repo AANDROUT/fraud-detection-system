@@ -27,31 +27,45 @@
         .container {
             padding: 40px;
         }
+        .section-title {
+            background-color: #1a3a5f;
+            color: white;
+            padding: 15px 20px;
+            margin: 0;
+            border-radius: 8px 8px 0 0;
+            font-size: 1.3em;
+        }
         .upload-section { 
-            background: white; 
-            padding: 25px; 
-            border-radius: 10px; 
+            background: #f8f9fa; 
+            padding: 0;
+            border-radius: 8px;
             margin-bottom: 30px;
-            border-left: 4px solid #1a3a5f;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .upload-content {
+            padding: 25px;
         }
         .dashboard { 
-            background: white; 
-            padding: 20px; 
-            border-radius: 10px; 
+            background: #f8f9fa;
+            padding: 0;
+            border-radius: 8px;
             margin-bottom: 30px;
-            border-left: 4px solid #28a745;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             display: none;
         }
+        .dashboard-content {
+            padding: 20px;
+        }
         .alert-section { 
-            background: white; 
-            padding: 20px; 
-            border-radius: 10px; 
+            background: #f8f9fa;
+            padding: 0;
+            border-radius: 8px;
             margin-bottom: 30px;
-            border-left: 4px solid #1a3a5f;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             display: none;
+        }
+        .alert-content {
+            padding: 20px;
         }
         .alert-container {
             max-height: 400px;
@@ -59,11 +73,12 @@
             padding-right: 10px;
         }
         .alert { 
-            background: #f8f9fa; 
+            background: white; 
             padding: 15px; 
             margin: 10px 0; 
             border-radius: 5px; 
             border-left: 4px solid #dc3545;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         }
         .low-confidence-alert {
             border-left: 4px solid #ffc107;
@@ -159,23 +174,30 @@
     
     <div class="container">
         <div class="upload-section">
-            <h3>Upload Transaction Batch</h3>
-            <input type="file" id="fileInput" accept=".csv">
-            <button id="processButton" onclick="processFile()">Process Batch</button>
-            <div id="uploadStatus"></div>
+            <h3 class="section-title">Upload Transaction Batch</h3>
+            <div class="upload-content">
+                <input type="file" id="fileInput" accept=".csv">
+                <button id="processButton" onclick="processFile()">Process Batch</button>
+                <div id="uploadStatus"></div>
+            </div>
         </div>
 
         <div id="dashboard" class="dashboard">
-            <h3>System Performance Dashboard</h3>
-            <div id="metrics"></div>
+            <h3 class="section-title">System Performance Dashboard</h3>
+            <div class="dashboard-content">
+                <div id="metrics"></div>
+            </div>
         </div>
 
         <div id="alertsSection" class="alert-section">
-            <h3>High Confidence Alerts (≥50%)</h3>
-            <div id="highConfidenceContainer" class="alert-container"></div>
-            
-            <h3>Low Confidence Alerts (<50%)</h3>
-            <div id="lowConfidenceContainer" class="alert-container"></div>
+            <h3 class="section-title">Fraud Alerts</h3>
+            <div class="alert-content">
+                <h4>High Confidence Alerts (≥50%)</h3>
+                <div id="highConfidenceContainer" class="alert-container"></div>
+                
+                <h4>Low Confidence Alerts (<50%)</h3>
+                <div id="lowConfidenceContainer" class="alert-container"></div>
+            </div>
         </div>
     </div>
 
@@ -249,11 +271,6 @@
                     <h2>${dashboard.alerts_generated}</h2>
                     <small>${dashboard.false_alerts} false alerts</small>
                 </div>
-                <div class="metric-card">
-                    <h4>Efficiency</h4>
-                    <h2>${dashboard.alert_efficiency}</h2>
-                    <small>Fraud per alert</small>
-                </div>
             `;
             document.getElementById('dashboard').style.display = 'block';
         }
@@ -266,7 +283,7 @@
             lowContainer.innerHTML = '';
 
             // Sort alerts by confidence in descending order
-            alerts.sort((a, b) => b.confidence - a.confidence);
+            alerts.sort((a, b) => b.confidence - a.confentialerts.sort((a, b) => b.confidence - a.confidence);
 
             alerts.forEach(alert => {
                 const alertDiv = document.createElement('div');
