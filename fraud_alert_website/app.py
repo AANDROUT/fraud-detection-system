@@ -166,7 +166,7 @@ def get_xgboost_predictions(test_df):
                 'actual_fraud': test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
             })
             
-            if prob_float > 0.15:  # Same threshold as before
+            if prob_float > 0.01:  # Same threshold as before
                 alerts.append({
                     'record_id': i,
                     'fraud_probability': prob_float,
@@ -292,7 +292,7 @@ def upload_file():
             file.save(filepath)
             df = pd.read_csv(filepath)
             
-            # 🔍 ADD THIS DIAGNOSTIC
+            # 🔍 DIAGNOSTIC
             print("🔍 DIAGNOSING UPLOADED FILE...")
             missing_cols, extra_cols = validate_uploaded_data(df)
             
@@ -301,9 +301,6 @@ def upload_file():
                 if os.path.exists(filepath):
                     os.remove(filepath)
                 return jsonify({'success': False, 'error': error_msg})
-            
-            # Rest of your existing code continues here...
-            # [keep all your existing data cleaning and processing code]
             
             # Data cleaning
             for col in df.columns:
@@ -314,8 +311,23 @@ def upload_file():
             
             df = df.reset_index().rename(columns={'index': 'original_index'})
             
-            # Use XGBoost instead of DataRobot
+            # Use XGBoost for predictions
             alerts, predictions = get_xgboost_predictions(df)
+            
+            # 🔍 DEBUGGING CODE (FIXED INDENTATION)
+            print(f"🔍 DEBUG: Got {len(alerts)} alerts and {len(predictions)} predictions")
+            if predictions:
+                fraud_probs = [p['fraud_probability'] for p in predictions]
+                print(f"📊 Fraud probability range: {min(fraud_probs):.3f} to {max(fraud_probs):.3f}")
+                print(f"📈 Alerts above threshold: {len(alerts)}")
+                if fraud_probs:
+                    print(f"🎯 Top 5 probabilities: {sorted(fraud_probs, reverse=True)[:5]}")
+            else:
+                print("❌ No predictions were generated!")
+            
+            if not alerts:
+                print("🚨 No alerts generated! All probabilities might be below threshold.")
+            
             enhanced_alerts, stats = create_95percent_recall_justifications(df, alerts)
             
             # Calculate metrics
@@ -396,4 +408,5 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     print(f"✅ Server ready on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
