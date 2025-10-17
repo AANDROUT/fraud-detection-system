@@ -1,6 +1,12 @@
 Flask
+render_template
+request
+jsonify
 pandas
 numpy
-requests
-Werkzeug
-gunicorn
+os
+joblib
+secure_filename
+LabelEncoder
+xgboost
+pickle
