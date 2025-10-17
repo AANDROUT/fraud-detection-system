@@ -1,17 +1,172 @@
 from flask import Flask, render_template, request, jsonify
 import pandas as pd
 import numpy as np
-import requests
 import os
+import joblib
 from werkzeug.utils import secure_filename
+from sklearn.preprocessing import LabelEncoder
+import xgboost as xgb
+import pickle
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads/'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
+# Global variables for model and encoders
+model = None
+label_encoders = None
+
+def load_model():
+    """Load the pre-trained XGBoost model"""
+    global model, label_encoders
+    
+    try:
+        # For Render, we'll train the model on startup if no saved model exists
+        if not os.path.exists('fraud_model.pkl'):
+            print("🔄 No saved model found, training new model...")
+            train_and_save_model()
+        else:
+            model = joblib.load('fraud_model.pkl')
+            label_encoders = joblib.load('label_encoders.pkl')
+            print("✅ Model loaded successfully")
+    except Exception as e:
+        print(f"❌ Error loading model: {e}")
+        print("🔄 Training new model...")
+        train_and_save_model()
+
+def train_and_save_model():
+    """Train and save the model - optimized for Render"""
+    global model, label_encoders
+    
+    try:
+        print("📥 Loading dataset...")
+        # Use the dataset that should be in your GitHub repo
+        df = pd.read_csv('BankSim_Fraud_10Features.csv')
+        df = df.fillna(0)
+        
+        print("🔧 Preparing features...")
+        X = df.drop(columns=["fraud"])
+        y = df["fraud"]
+        
+        # Encode categorical variables
+        X_encoded = X.copy()
+        label_encoders = {}
+        for col in X_encoded.columns:
+            if X_encoded[col].dtype == 'object':
+                le = LabelEncoder()
+                X_encoded[col] = le.fit_transform(X_encoded[col].astype(str))
+                label_encoders[col] = le
+        
+        print("🏋️ Training XGBoost model...")
+        ratio = (y == 0).sum() / (y == 1).sum()
+        model = xgb.XGBClassifier(
+            n_estimators=200,  # Reduced for faster training on Render
+            learning_rate=0.1,
+            max_depth=6,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            eval_metric='aucpr',
+            tree_method='hist',
+            scale_pos_weight=ratio,
+            random_state=42
+        )
+        
+        model.fit(X_encoded, y, verbose=False)
+        
+        # Save for future use
+        joblib.dump(model, 'fraud_model.pkl')
+        joblib.dump(label_encoders, 'label_encoders.pkl')
+        print("✅ Model trained and saved successfully")
+        
+    except Exception as e:
+        print(f"❌ Error training model: {e}")
+        # Create a simple fallback model
+        create_fallback_model()
+
+def create_fallback_model():
+    """Create a simple fallback model if training fails"""
+    global model, label_encoders
+    
+    print("🛠️ Creating fallback model...")
+    # Simple rules-based fallback
+    from sklearn.ensemble import RandomForestClassifier
+    
+    # Create dummy data for fallback model
+    X_dummy = np.random.rand(1000, 5)
+    y_dummy = (X_dummy[:, 0] > 0.7).astype(int)
+    
+    model = RandomForestClassifier(n_estimators=10, random_state=42)
+    model.fit(X_dummy, y_dummy)
+    
+    label_encoders = {}
+    print("✅ Fallback model created")
+
+def get_xgboost_predictions(test_df):
+    """Get predictions from XGBoost model"""
+    global model, label_encoders
+    
+    if model is None:
+        load_model()
+    
+    print(f"🔍 Processing {len(test_df)} records with XGBoost...")
+    
+    try:
+        # Prepare the test data
+        X_test = test_df.copy()
+        
+        # Handle categorical encoding
+        for col in X_test.columns:
+            if col in label_encoders:
+                X_test[col] = X_test[col].astype(str)
+                # Map unseen values to 'unknown'
+                trained_vals = set(label_encoders[col].classes_)
+                X_test.loc[~X_test[col].isin(trained_vals), col] = 'unknown'
+                X_test[col] = label_encoders[col].transform(X_test[col])
+        
+        # Ensure all training columns are present
+        missing_cols = set(model.get_booster().feature_names) - set(X_test.columns)
+        for col in missing_cols:
+            X_test[col] = 0
+        
+        # Reorder columns to match training
+        X_test = X_test[model.get_booster().feature_names]
+        
+        # Get predictions
+        fraud_proba = model.predict_proba(X_test)[:, 1]
+        
+        alerts = []
+        all_predictions = []
+        
+        for i, prob in enumerate(fraud_proba):
+            prob_float = float(prob)
+            all_predictions.append({
+                'record_id': i,
+                'fraud_probability': prob_float,
+                'actual_fraud': test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
+            })
+            
+            if prob_float > 0.15:  # Same threshold as before
+                alerts.append({
+                    'record_id': i,
+                    'fraud_probability': prob_float,
+                    'raw_data': test_df.iloc[i].to_dict(),
+                    'risk_level': 'CRITICAL' if prob_float > 0.95 else 'HIGH' if prob_float > 0.8 else 'MEDIUM',
+                    'customer_id': str(test_df.iloc[i].get('customer', 'Unknown')),
+                    'merchant_id': str(test_df.iloc[i].get('merchant', 'Unknown')),
+                    'step': str(test_df.iloc[i].get('step', 'Unknown'))
+                })
+        
+        print(f"✅ Generated {len(alerts)} alerts")
+        return alerts, all_predictions
+        
+    except Exception as e:
+        print(f"❌ Prediction error: {e}")
+        # Return empty results on error
+        return [], []
+
 def create_95percent_recall_justifications(df, alerts):
-    """ULTRA-AGGRESSIVE for 90%+ recall"""
-    print("🔍 ULTRA-AGGRESSIVE 90%+ SYSTEM")
+    """ULTRA-AGGRESSIVE for 90%+ recall - EXACTLY THE SAME"""
+    print("🔍 ULTRA-AGGRESSIVE 90%+ RECALL SYSTEM")
     
     enhanced_alerts = []
     
@@ -23,7 +178,7 @@ def create_95percent_recall_justifications(df, alerts):
         
         # 1. ANY CATEGORY (except most common)
         category = record_data.get('category', '')
-        safe_categories = ['es_transportation', 'es_food']  # Only these are "safe"
+        safe_categories = ['es_transportation', 'es_food']
         if category not in safe_categories:
             justifications.append({
                 'category': 'CATEGORY_RISK', 'feature': 'category', 'strength': 0.4,
@@ -74,78 +229,8 @@ def create_95percent_recall_justifications(df, alerts):
             enhanced_alert['confidence_score'] = probability
             enhanced_alerts.append(enhanced_alert)
     
-    print(f"✅ ULTRA-AGGRESSIVE: {len(alerts)} → {len(enhanced_alerts)} alerts")
+    print(f"✅ Enhanced {len(alerts)} → {len(enhanced_alerts)} alerts")
     return enhanced_alerts, {}
-
-def get_datarobot_predictions(test_df):
-    """Get predictions from DataRobot API"""
-    API_KEY = "NjhlYzZiODMxNDNkZGRiNzBkMGZmNDBkOjV6S3cxelZGUDRxZUY4MWpiNXR0SkFCSWpKMVRtQVR0cENSdVJwMFZWTWM9"
-    DEPLOYMENT_ID = "68ec56909821c3a55f1c04aa"
-    
-    url = f"https://app.datarobot.com/api/v2/deployments/{DEPLOYMENT_ID}/predictions"
-    headers = {"Authorization": f"Bearer {API_KEY}", "Content-Type": "application/json"}
-    
-    required_columns = ['age', 'amount', 'amount_over_cust_median_7d', 'category', 'cust_median_amt_7d', 'cust_tx_count_1d', 'cust_tx_count_7d', 'cust_unique_merchants_30d', 'customer', 'first_time_pair', 'gender', 'log_amount', 'mch_tx_count_1d', 'mch_unique_customers_7d', 'step', 'time_since_last_pair_tx']
-    
-    payload = []
-    for _, row in test_df.iterrows():
-        record = {}
-        for col in required_columns:
-            if col in test_df.columns:
-                record[col] = row[col] if not pd.isna(row[col]) else 0
-            else:
-                if col in ['amount', 'cust_tx_count_1d', 'first_time_pair', 'time_since_last_pair_tx']:
-                    record[col] = 0
-                elif col in ['age', 'cust_tx_count_7d', 'step']:
-                    record[col] = 1
-                elif col in ['amount_over_cust_median_7d', 'cust_median_amt_7d', 'log_amount']:
-                    record[col] = 0.0
-                elif col in ['customer', 'gender']:
-                    record[col] = "unknown"
-                else:
-                    record[col] = ""
-        payload.append(record)
-    
-    print(f"📡 Getting predictions for {len(payload)} records...")
-    try:
-        response = requests.post(url, headers=headers, json=payload, timeout=120)
-        if response.status_code == 200:
-            results = response.json()["data"]
-            alerts = []
-            all_predictions = []
-            
-            for i, item in enumerate(results):
-                fraud_prob = None
-                for pred_val in item["predictionValues"]:
-                    if pred_val["label"] == 1:
-                        fraud_prob = pred_val["value"]
-                        break
-                
-                all_predictions.append({
-                    'record_id': i,
-                    'fraud_probability': fraud_prob,
-                    'actual_fraud': test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
-                })
-                
-                if fraud_prob and fraud_prob > 0.15:
-                    alerts.append({
-                        'record_id': i,
-                        'fraud_probability': fraud_prob,
-                        'raw_data': test_df.iloc[i].to_dict(),
-                        'risk_level': 'CRITICAL' if fraud_prob > 0.95 else 'HIGH' if fraud_prob > 0.8 else 'MEDIUM',
-                        'customer_id': test_df.iloc[i].get('customer', 'Unknown'),
-                        'merchant_id': test_df.iloc[i].get('merchant', 'Unknown'),
-                        'step': test_df.iloc[i].get('step', 'Unknown')
-                    })
-            
-            print(f"✅ Received {len(alerts)} alerts from {len(results)} predictions")
-            return alerts, all_predictions
-        else:
-            print(f"❌ API Error: {response.status_code}")
-            return [], []
-    except Exception as e:
-        print(f"❌ Prediction error: {e}")
-        return [], []
 
 @app.route('/')
 def index():
@@ -163,10 +248,12 @@ def upload_file():
     if file and file.filename.endswith('.csv'):
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
         
         try:
+            file.save(filepath)
             df = pd.read_csv(filepath)
+            
+            # Data cleaning
             for col in df.columns:
                 if df[col].dtype == 'object':
                     df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x)
@@ -175,29 +262,30 @@ def upload_file():
             
             df = df.reset_index().rename(columns={'index': 'original_index'})
             
-            alerts, predictions = get_datarobot_predictions(df)
+            # Use XGBoost instead of DataRobot
+            alerts, predictions = get_xgboost_predictions(df)
             enhanced_alerts, stats = create_95percent_recall_justifications(df, alerts)
             
-            y_true = [pred['actual_fraud'] for pred in predictions]
+            # Calculate metrics
+            y_true = [pred['actual_fraud'] for pred in predictions] if predictions else []
             enhanced_alert_ids = set([alert['record_id'] for alert in enhanced_alerts])
-            y_pred = [1 if i in enhanced_alert_ids else 0 for i in range(len(predictions))]
+            y_pred = [1 if i in enhanced_alert_ids else 0 for i in range(len(predictions))] if predictions else []
             
-            tp = sum(1 for i in range(len(y_true)) if y_true[i] == 1 and y_pred[i] == 1)
-            fp = sum(1 for i in range(len(y_true)) if y_true[i] == 0 and y_pred[i] == 1)
-            fn = sum(1 for i in range(len(y_true)) if y_true[i] == 1 and y_pred[i] == 0)
+            tp = sum(1 for i in range(len(y_true)) if y_true[i] == 1 and y_pred[i] == 1) if y_true else 0
+            fp = sum(1 for i in range(len(y_true)) if y_true[i] == 0 and y_pred[i] == 1) if y_true else 0
+            fn = sum(1 for i in range(len(y_true)) if y_true[i] == 1 and y_pred[i] == 0) if y_true else 0
             
             precision = tp / (tp + fp) if (tp + fp) > 0 else 0
             recall = tp / (tp + fn) if (tp + fn) > 0 else 0
             
-            # FIXED: Convert alerts to match HTML expected structure
+            # Format alerts for frontend
             alerts_data = []
-            for alert in enhanced_alerts[:50]:  # Limit to 50 alerts
-                # Convert probability to decimal for sorting
+            for alert in enhanced_alerts[:50]:
                 confidence_decimal = float(alert['fraud_probability'])
                 
                 alert_data = {
                     'record_id': int(alert['record_id']),
-                    'confidence': confidence_decimal,  # Use decimal for sorting
+                    'confidence': confidence_decimal,
                     'amount': f"${alert['raw_data'].get('amount', 0):.2f}",
                     'category': alert['raw_data'].get('category', 'Unknown'),
                     'customer_id': alert['raw_data'].get('customer', 'Unknown'),
@@ -216,16 +304,19 @@ def upload_file():
                 }
                 alerts_data.append(alert_data)
             
-            # FIXED: Dashboard data with correct field names
             dashboard_data = {
                 'recall': f"{recall:.1%}",
                 'precision': f"{precision:.1%}",
                 'fraud_caught': int(tp),
-                'fraud_cases': int(sum(y_true)),
+                'fraud_cases': int(sum(y_true)) if y_true else 0,
                 'alerts_generated': int(len(enhanced_alerts)),
                 'false_alerts': int(fp),
                 'alert_efficiency': f"{tp/len(enhanced_alerts):.1%}" if enhanced_alerts else "0%"
             }
+            
+            # Clean up uploaded file
+            if os.path.exists(filepath):
+                os.remove(filepath)
             
             return jsonify({
                 'success': True, 
@@ -234,16 +325,22 @@ def upload_file():
             })
             
         except Exception as e:
+            # Clean up on error
+            if os.path.exists(filepath):
+                os.remove(filepath)
             return jsonify({'success': False, 'error': f'Processing error: {str(e)}'})
     
     return jsonify({'success': False, 'error': 'Invalid file type'})
 
 if __name__ == '__main__':
-    # Create upload folder if it doesn't exist
+    # Load model on startup
+    print("🚀 Starting Apex Fraud Studio...")
+    load_model()
+    
+    # Create upload folder
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         os.makedirs(app.config['UPLOAD_FOLDER'])
     
-    # Get port from environment variable (for Render)
     port = int(os.environ.get("PORT", 5000))
-
+    print(f"✅ Server ready on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
