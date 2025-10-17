@@ -1,12 +1,7 @@
 Flask
-render_template
-request
-jsonify
 pandas
 numpy
-os
-joblib
-secure_filename
-LabelEncoder
+scikit-learn
 xgboost
-pickle
+joblib
+werkzeug
