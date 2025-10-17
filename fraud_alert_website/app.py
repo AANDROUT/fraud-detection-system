@@ -6,7 +6,6 @@ import joblib
 from werkzeug.utils import secure_filename
 from sklearn.preprocessing import LabelEncoder
 import xgboost as xgb
-import pickle
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads/'
@@ -34,14 +33,35 @@ def load_model():
         print("🔄 Training new model...")
         train_and_save_model()
 
+def load_dataset_from_parts():
+    """Load the full dataset from 6 parts"""
+    print("📥 Loading dataset from parts...")
+    
+    parts = []
+    for i in range(1, 7):
+        filename = f'BankSim_part_{i}.csv'
+        try:
+            part_df = pd.read_csv(filename)
+            parts.append(part_df)
+            print(f"✅ Loaded {filename}: {len(part_df)} records")
+        except Exception as e:
+            print(f"❌ Error loading {filename}: {e}")
+    
+    if not parts:
+        raise Exception("Could not load any dataset parts")
+    
+    # Combine all parts
+    full_df = pd.concat(parts, ignore_index=True)
+    print(f"📊 Combined dataset: {len(full_df)} total records")
+    return full_df
+
 def train_and_save_model():
-    """Train and save the model - optimized for Render"""
+    """Train and save the model using the 6-part dataset"""
     global model, label_encoders
     
     try:
-        print("📥 Loading dataset...")
-        # Use the dataset that should be in your GitHub repo
-        df = pd.read_csv('BankSim_Fraud_10Features.csv')
+        print("📥 Loading dataset from parts...")
+        df = load_dataset_from_parts()
         df = df.fillna(0)
         
         print("🔧 Preparing features...")
@@ -124,12 +144,13 @@ def get_xgboost_predictions(test_df):
                 X_test[col] = label_encoders[col].transform(X_test[col])
         
         # Ensure all training columns are present
-        missing_cols = set(model.get_booster().feature_names) - set(X_test.columns)
-        for col in missing_cols:
-            X_test[col] = 0
-        
-        # Reorder columns to match training
-        X_test = X_test[model.get_booster().feature_names]
+        if hasattr(model, 'get_booster'):
+            missing_cols = set(model.get_booster().feature_names) - set(X_test.columns)
+            for col in missing_cols:
+                X_test[col] = 0
+            
+            # Reorder columns to match training
+            X_test = X_test[model.get_booster().feature_names]
         
         # Get predictions
         fraud_proba = model.predict_proba(X_test)[:, 1]
