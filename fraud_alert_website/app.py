@@ -257,6 +257,24 @@ def create_95percent_recall_justifications(df, alerts):
 def index():
     return render_template('index.html')
 
+def validate_uploaded_data(df):
+    """Check if uploaded data has the required columns"""
+    required_columns = [
+        'step', 'customer', 'age', 'gender', 'merchant', 'category', 'amount',
+        'log_amount', 'cust_tx_count_1d', 'cust_tx_count_7d', 'cust_median_amt_7d',
+        'amount_over_cust_median_7d', 'cust_unique_merchants_30d', 'first_time_pair',
+        'time_since_last_pair_tx', 'mch_tx_count_1d', 'mch_unique_customers_7d'
+    ]
+    
+    missing_columns = [col for col in required_columns if col not in df.columns]
+    extra_columns = [col for col in df.columns if col not in required_columns]
+    
+    print(f"📊 Uploaded file columns: {list(df.columns)}")
+    print(f"❌ Missing columns: {missing_columns}")
+    print(f"📈 Extra columns: {extra_columns}")
+    
+    return missing_columns, extra_columns
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
@@ -273,6 +291,19 @@ def upload_file():
         try:
             file.save(filepath)
             df = pd.read_csv(filepath)
+            
+            # 🔍 ADD THIS DIAGNOSTIC
+            print("🔍 DIAGNOSING UPLOADED FILE...")
+            missing_cols, extra_cols = validate_uploaded_data(df)
+            
+            if missing_cols:
+                error_msg = f"Missing required columns: {missing_cols}. Your CSV needs the same columns as the training data."
+                if os.path.exists(filepath):
+                    os.remove(filepath)
+                return jsonify({'success': False, 'error': error_msg})
+            
+            # Rest of your existing code continues here...
+            # [keep all your existing data cleaning and processing code]
             
             # Data cleaning
             for col in df.columns:
@@ -365,3 +396,4 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     print(f"✅ Server ready on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
