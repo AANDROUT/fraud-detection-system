@@ -1,159 +1,37 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Apex Fraud Studio - Fraud Alert System</title>
+    <title>Fraud Alert System</title>
     <style>
-        body { 
-            font-family: Arial, sans-serif; 
-            margin: 20px; 
-            background-color: #f8f9fa;
-            color: #333;
-        }
-        .header {
-            background-color: #001f3f;
-            color: white;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 30px;
-        }
-        .upload-section { 
-            background: #f5f5f5; 
-            padding: 20px; 
-            border-radius: 10px; 
-            margin-bottom: 30px; 
-            border-left: 4px solid #001f3f;
-        }
-        .dashboard { 
-            background: #e8f4fd; 
-            padding: 20px; 
-            border-radius: 10px; 
-            margin-bottom: 30px; 
-            border-left: 4px solid #001f3f;
-        }
-        .alert-section {
-            margin-bottom: 30px;
-        }
-        .alert-section h3 {
-            background-color: #001f3f;
-            color: white;
-            padding: 10px 15px;
-            border-radius: 5px;
-            margin-bottom: 15px;
-        }
-        .alert-container {
-            max-height: 400px;
-            overflow-y: auto;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            padding: 10px;
-            background: white;
-        }
-        .alert { 
-            background: white; 
-            padding: 15px; 
-            margin: 10px 0; 
-            border-radius: 5px; 
-            border-left: 4px solid #ffc107;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        .high-confidence { 
-            border-left: 4px solid #dc3545;
-        }
-        .low-confidence { 
-            border-left: 4px solid #ffc107;
-        }
-        .metric-card { 
-            background: white; 
-            padding: 15px; 
-            margin: 10px; 
-            border-radius: 5px; 
-            display: inline-block; 
-            width: 200px; 
-            text-align: center;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .upload-section { background: #f5f5f5; padding: 20px; border-radius: 10px; margin-bottom: 30px; }
+        .dashboard { background: #e8f4fd; padding: 20px; border-radius: 10px; margin-bottom: 30px; }
+        .alert { background: #fff3cd; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #ffc107; }
+        .metric-card { background: white; padding: 15px; margin: 10px; border-radius: 5px; display: inline-block; width: 200px; text-align: center; }
         .good { border-left: 4px solid #28a745; }
         .warning { border-left: 4px solid #ffc107; }
         .danger { border-left: 4px solid #dc3545; }
-        .justification { 
-            background: #f8f9fa; 
-            padding: 10px; 
-            margin: 5px 0; 
-            border-radius: 3px; 
-            border-left: 3px solid #6c757d;
-        }
-        button {
-            background-color: #001f3f;
-            color: white;
-            border: none;
-            padding: 10px 15px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-        }
-        button:hover {
-            background-color: #003366;
-        }
-        input[type="file"] {
-            padding: 8px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
-            margin-right: 10px;
-        }
-        .confidence-badge {
-            display: inline-block;
-            padding: 3px 8px;
-            border-radius: 12px;
-            font-size: 12px;
-            font-weight: bold;
-            margin-left: 10px;
-        }
-        .high-badge { background: #dc3545; color: white; }
-        .medium-badge { background: #ffc107; color: black; }
-        .low-badge { background: #6c757d; color: white; }
-        .loading {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #001f3f;
-            border-radius: 50%;
-            width: 30px;
-            height: 30px;
-            animation: spin 2s linear infinite;
-            margin: 10px auto;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
+        .justification { background: #f8f9fa; padding: 10px; margin: 5px 0; border-radius: 3px; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Apex Fraud Studio</h1>
-        <h2>Fraud Alert System</h2>
-    </div>
+    <h1>🎯 Fraud Alert System</h1>
     
     <div class="upload-section">
-        <h3>Upload Transaction Batch</h3>
+        <h3>📁 Upload Transaction Batch</h3>
         <input type="file" id="fileInput" accept=".csv">
         <button onclick="processFile()">Process Batch</button>
         <div id="uploadStatus"></div>
     </div>
 
     <div id="dashboard" class="dashboard" style="display:none;">
-        <h3>System Performance Dashboard</h3>
+        <h3>📊 System Performance Dashboard</h3>
         <div id="metrics"></div>
     </div>
 
     <div id="alertsSection" style="display:none;">
-        <div class="alert-section">
-            <h3>High Confidence Alerts (Above 50% Likelihood)</h3>
-            <div class="alert-container" id="highAlertsContainer"></div>
-        </div>
-        
-        <div class="alert-section">
-            <h3>Low Confidence Alerts (Below 50% Likelihood)</h3>
-            <div class="alert-container" id="lowAlertsContainer"></div>
-        </div>
+        <h3>🚨 Fraud Alerts</h3>
+        <div id="alertsContainer"></div>
     </div>
 
     <script>
@@ -166,159 +44,85 @@
                 return;
             }
 
-            // Show loading animation
-            statusDiv.innerHTML = '<div class="loading"></div><div>Processing file...</div>';
+            statusDiv.innerHTML = 'Processing...';
             
             const formData = new FormData();
             formData.append('file', fileInput.files[0]);
 
             try {
-                console.log('Starting file upload...');
-                
-                // Use relative URL for deployment compatibility
                 const response = await fetch('/upload', {
                     method: 'POST',
                     body: formData
                 });
 
-                console.log('Response status:', response.status);
-                console.log('Response headers:', response.headers);
-
-                // Check if response is JSON
-                const contentType = response.headers.get('content-type');
-                if (!contentType || !contentType.includes('application/json')) {
-                    const text = await response.text();
-                    console.error('Non-JSON response:', text.substring(0, 500));
-                    throw new Error(`Server returned unexpected response. Status: ${response.status}`);
-                }
-
                 const data = await response.json();
-                console.log('Response data:', data);
                 
                 if (data.success) {
-                    statusDiv.innerHTML = '<span style="color: green;">Processing complete! ✅</span>';
+                    statusDiv.innerHTML = '<span style="color: green;">✅ Processing complete!</span>';
                     displayDashboard(data.dashboard);
                     displayAlerts(data.alerts);
                 } else {
-                    statusDiv.innerHTML = `<span style="color: red;">Error: ${data.error}</span>`;
+                    statusDiv.innerHTML = `<span style="color: red;">❌ ${data.error}</span>`;
                 }
             } catch (error) {
-                console.error('Upload error details:', error);
-                statusDiv.innerHTML = `<span style="color: red;">Upload failed: ${error.message}</span>`;
+                statusDiv.innerHTML = `<span style="color: red;">❌ Upload failed: ${error}</span>`;
             }
         }
 
         function displayDashboard(dashboard) {
             const metricsDiv = document.getElementById('metrics');
-            
-            // Parse percentage values for conditional formatting
-            const recallValue = parseFloat(dashboard.recall);
-            const precisionValue = parseFloat(dashboard.precision);
-            const falseAlertRate = dashboard.false_alerts / dashboard.alerts_generated;
-            
             metricsDiv.innerHTML = `
-                <div class="metric-card ${recallValue > 90 ? 'good' : recallValue > 70 ? 'warning' : 'danger'}">
-                    <h4>Fraud Detection Rate</h4>
+                <div class="metric-card good">
+                    <h4>Fraud Detection</h4>
                     <h2>${dashboard.recall}</h2>
-                    <small>${dashboard.fraud_caught}/${dashboard.fraud_cases} fraud cases caught</small>
+                    <small>${dashboard.fraud_caught}/${dashboard.fraud_cases} cases</small>
                 </div>
-                <div class="metric-card ${precisionValue > 80 ? 'good' : precisionValue > 60 ? 'warning' : 'danger'}">
+                <div class="metric-card warning">
                     <h4>Precision</h4>
                     <h2>${dashboard.precision}</h2>
-                    <small>Alert accuracy rate</small>
+                    <small>Alert accuracy</small>
                 </div>
-                <div class="metric-card ${falseAlertRate < 0.3 ? 'good' : falseAlertRate < 0.5 ? 'warning' : 'danger'}">
-                    <h4>Alerts Generated</h4>
+                <div class="metric-card">
+                    <h4>Alerts</h4>
                     <h2>${dashboard.alerts_generated}</h2>
                     <small>${dashboard.false_alerts} false alerts</small>
                 </div>
-                <div class="metric-card ${dashboard.alert_efficiency > 0.5 ? 'good' : dashboard.alert_efficiency > 0.3 ? 'warning' : 'danger'}">
-                    <h4>Efficiency Ratio</h4>
+                <div class="metric-card">
+                    <h4>Efficiency</h4>
                     <h2>${dashboard.alert_efficiency}</h2>
-                    <small>Fraud caught per alert</small>
+                    <small>Fraud per alert</small>
                 </div>
             `;
             document.getElementById('dashboard').style.display = 'block';
         }
 
         function displayAlerts(alerts) {
-            console.log('Displaying alerts:', alerts.length);
-            
-            // Sort alerts by confidence in descending order
-            alerts.sort((a, b) => b.confidence - a.confidence);
-            
-            // Split alerts into high and low confidence
-            const highConfidenceAlerts = alerts.filter(alert => alert.confidence >= 0.5);
-            const lowConfidenceAlerts = alerts.filter(alert => alert.confidence < 0.5);
-            
-            // Display high confidence alerts
-            const highContainer = document.getElementById('highAlertsContainer');
-            highContainer.innerHTML = '';
-            
-            if (highConfidenceAlerts.length === 0) {
-                highContainer.innerHTML = '<p>No high confidence alerts to display.</p>';
-            } else {
-                highConfidenceAlerts.forEach(alert => {
-                    const alertDiv = document.createElement('div');
-                    alertDiv.className = 'alert high-confidence';
-                    alertDiv.innerHTML = createAlertHTML(alert);
-                    highContainer.appendChild(alertDiv);
-                });
-            }
-            
-            // Display low confidence alerts
-            const lowContainer = document.getElementById('lowAlertsContainer');
-            lowContainer.innerHTML = '';
-            
-            if (lowConfidenceAlerts.length === 0) {
-                lowContainer.innerHTML = '<p>No low confidence alerts to display.</p>';
-            } else {
-                lowConfidenceAlerts.forEach(alert => {
-                    const alertDiv = document.createElement('div');
-                    alertDiv.className = 'alert low-confidence';
-                    alertDiv.innerHTML = createAlertHTML(alert);
-                    lowContainer.appendChild(alertDiv);
-                });
-            }
+            const container = document.getElementById('alertsContainer');
+            container.innerHTML = '';
+
+            alerts.forEach(alert => {
+                const alertDiv = document.createElement('div');
+                alertDiv.className = 'alert';
+                alertDiv.innerHTML = `
+                    <h4>Alert #${alert.record_id} | Confidence: ${alert.confidence}</h4>
+                    <p><strong>Amount:</strong> ${alert.amount} | <strong>Category:</strong> ${alert.category}</p>
+                    <p><strong>Customer:</strong> ${alert.customer_id} | <strong>Merchant:</strong> ${alert.merchant_id} | <strong>Step:</strong> ${alert.step}</p>
+                    <p><strong>Risk Factors:</strong> ${alert.risk_factors}</p>
+                    <div class="justifications">
+                        ${alert.justifications.map(j => `
+                            <div class="justification">
+                                <strong>${j.title}</strong><br>
+                                ${j.description}<br>
+                                <small>Strength: ${j.strength.toFixed(1)} | Risk: ${j.risk_level}</small>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+                container.appendChild(alertDiv);
+            });
 
             document.getElementById('alertsSection').style.display = 'block';
         }
-
-        function createAlertHTML(alert) {
-            const confidencePercent = Math.round(alert.confidence * 100);
-            const badgeClass = alert.confidence >= 0.7 ? 'high-badge' : alert.confidence >= 0.5 ? 'medium-badge' : 'low-badge';
-            const badgeText = alert.confidence >= 0.7 ? 'HIGH' : alert.confidence >= 0.5 ? 'MEDIUM' : 'LOW';
-            
-            return `
-                <h4>
-                    Alert #${alert.record_id} 
-                    <span class="confidence-badge ${badgeClass}">${badgeText}</span>
-                </h4>
-                <p><strong>Confidence:</strong> ${confidencePercent}%</p>
-                <p><strong>Amount:</strong> ${alert.amount} | <strong>Category:</strong> ${alert.category}</p>
-                <p><strong>Customer:</strong> ${alert.customer_id} | <strong>Merchant:</strong> ${alert.merchant_id} | <strong>Step:</strong> ${alert.step}</p>
-                <p><strong>Risk Factors:</strong> ${alert.risk_factors}</p>
-                <div class="justifications">
-                    ${alert.justifications.map(j => `
-                        <div class="justification">
-                            <strong>${j.title}</strong><br>
-                            ${j.description}<br>
-                            <small>Strength: ${j.strength.toFixed(1)} | Risk Level: ${j.risk_level}</small>
-                        </div>
-                    `).join('')}
-                </div>
-            `;
-        }
-
-        // Add event listener for Enter key on file input
-        document.getElementById('fileInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                processFile();
-            }
-        });
-
-        // Log when page loads
-        console.log('Apex Fraud Studio loaded successfully');
     </script>
 </body>
 </html>
