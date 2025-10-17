@@ -129,19 +129,29 @@ def get_xgboost_predictions(test_df):
         load_model()
     
     print(f"🔍 Processing {len(test_df)} records with XGBoost...")
+    print(f"📋 Test DataFrame columns: {list(test_df.columns)}")
     
     try:
         # Prepare the test data
         X_test = test_df.copy()
+        print(f"📊 X_test shape before encoding: {X_test.shape}")
         
         # Handle categorical encoding
         for col in X_test.columns:
             if col in label_encoders:
+                print(f"🔧 Encoding column: {col}")
                 X_test[col] = X_test[col].astype(str)
                 # Map unseen values to 'unknown'
                 trained_vals = set(label_encoders[col].classes_)
+                unseen_count = len(X_test[~X_test[col].isin(trained_vals)])
+                if unseen_count > 0:
+                    print(f"⚠️  Mapping {unseen_count} unseen values in {col} to 'unknown'")
                 X_test.loc[~X_test[col].isin(trained_vals), col] = 'unknown'
                 X_test[col] = label_encoders[col].transform(X_test[col])
+        
+        print(f"📊 X_test shape after encoding: {X_test.shape}")
+        
+        # Continue with the rest of the function...
         
         # Ensure all training columns are present
         if hasattr(model, 'get_booster'):
@@ -277,12 +287,18 @@ def validate_uploaded_data(df):
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
+    print("🔄 UPLOAD ROUTE CALLED - STARTING PROCESSING")
+    
     if 'file' not in request.files:
+        print("❌ No file in request")
         return jsonify({'success': False, 'error': 'No file uploaded'})
     
     file = request.files['file']
     if file.filename == '':
+        print("❌ Empty filename")
         return jsonify({'success': False, 'error': 'No file selected'})
+    
+    print(f"📁 Processing file: {file.filename}")
     
     if file and file.filename.endswith('.csv'):
         filename = secure_filename(file.filename)
@@ -290,17 +306,25 @@ def upload_file():
         
         try:
             file.save(filepath)
+            print(f"✅ File saved to: {filepath}")
+            
             df = pd.read_csv(filepath)
+            print(f"📊 Loaded DataFrame shape: {df.shape}")
             
             # 🔍 DIAGNOSTIC
             print("🔍 DIAGNOSING UPLOADED FILE...")
             missing_cols, extra_cols = validate_uploaded_data(df)
             
             if missing_cols:
+                print(f"❌ Missing columns: {missing_cols}")
                 error_msg = f"Missing required columns: {missing_cols}. Your CSV needs the same columns as the training data."
                 if os.path.exists(filepath):
                     os.remove(filepath)
                 return jsonify({'success': False, 'error': error_msg})
+            
+            print("✅ All required columns present!")
+            
+            # Continue with the rest of your processing...
             
             # Data cleaning
             for col in df.columns:
@@ -408,5 +432,6 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     print(f"✅ Server ready on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
