@@ -1,391 +1,158 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Apex Fraud Studio</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        }
-        
-        body {
-            background-color: #f8f9fa;
+        body { 
+            font-family: Arial, sans-serif; 
+            margin: 40px;
+            background-color: white;
             color: #333;
-            line-height: 1.6;
         }
-        
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        
-        header {
-            background-color: #1a3a5f;
-            color: white;
-            padding: 30px 0;
-            border-bottom: 4px solid #2c5a8c;
+        .upload-section { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 10px; 
             margin-bottom: 30px;
-        }
-        
-        .header-content {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 20px;
-        }
-        
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 5px;
-            font-weight: 700;
-        }
-        
-        .subtitle {
-            font-size: 1.2rem;
-            color: #c9d8e9;
-            font-weight: 300;
-        }
-        
-        .upload-section {
-            background: white;
-            padding: 25px;
-            border-radius: 8px;
-            margin-bottom: 30px;
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
             border-left: 4px solid #1a3a5f;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
-        
-        .dashboard {
-            background: white;
-            padding: 25px;
-            border-radius: 8px;
+        .dashboard { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 10px; 
             margin-bottom: 30px;
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
             border-left: 4px solid #28a745;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             display: none;
         }
-        
-        .alert-section {
-            background: white;
-            padding: 25px;
-            border-radius: 8px;
+        .alert-section { 
+            background: white; 
+            padding: 20px; 
+            border-radius: 10px; 
             margin-bottom: 30px;
-            box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
             border-left: 4px solid #1a3a5f;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             display: none;
         }
-        
         .alert-container {
             max-height: 400px;
             overflow-y: auto;
             padding-right: 10px;
         }
-        
-        .alert {
-            background: #f8f9fa;
-            padding: 15px;
-            margin: 15px 0;
-            border-radius: 6px;
-            border-left: 4px solid #ffc107;
-        }
-        
-        .high-confidence {
+        .alert { 
+            background: #f8f9fa; 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
             border-left: 4px solid #dc3545;
         }
-        
-        .low-confidence {
+        .low-confidence-alert {
             border-left: 4px solid #ffc107;
         }
-        
-        .metric-card {
-            background: white;
-            padding: 20px;
-            margin: 10px;
-            border-radius: 6px;
-            display: inline-block;
-            width: 200px;
+        .metric-card { 
+            background: white; 
+            padding: 15px; 
+            margin: 10px; 
+            border-radius: 5px; 
+            display: inline-block; 
+            width: 200px; 
             text-align: center;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
             border-left: 4px solid #28a745;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
         }
-        
-        .justification {
-            background: #e9ecef;
-            padding: 10px;
-            margin: 8px 0;
-            border-radius: 4px;
+        .justification { 
+            background: #e9ecef; 
+            padding: 10px; 
+            margin: 5px 0; 
+            border-radius: 3px; 
         }
-        
-        h3 {
+        h1 {
             color: #1a3a5f;
-            margin-bottom: 15px;
-            font-size: 1.4rem;
+            margin-bottom: 5px;
         }
-        
-        h4 {
-            color: #1a3a5f;
-            margin-bottom: 10px;
+        .subtitle {
+            color: #666;
+            font-size: 1.2em;
+            margin-bottom: 30px;
         }
-        
-        input[type="file"] {
-            width: 100%;
-            padding: 10px;
-            margin: 10px 0;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-        }
-        
         button {
             background-color: #1a3a5f;
             color: white;
             border: none;
-            padding: 12px 25px;
-            border-radius: 4px;
+            padding: 10px 20px;
+            border-radius: 5px;
             cursor: pointer;
-            font-size: 1rem;
-            font-weight: 500;
-            transition: background-color 0.3s;
         }
-        
         button:hover {
             background-color: #2c5a8c;
         }
-        
-        #uploadStatus {
-            margin-top: 15px;
-            padding: 10px;
+        input[type="file"] {
+            padding: 8px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
             border-radius: 4px;
-        }
-        
-        .success {
-            background-color: #d4edda;
-            color: #155724;
-            border: 1px solid #c3e6cb;
-        }
-        
-        .error {
-            background-color: #f8d7da;
-            color: #721c24;
-            border: 1px solid #f5c6cb;
-        }
-        
-        .scrollable-section {
-            max-height: 400px;
-            overflow-y: auto;
-            padding-right: 10px;
-        }
-        
-        /* Custom scrollbar */
-        .scrollable-section::-webkit-scrollbar {
-            width: 8px;
-        }
-        
-        .scrollable-section::-webkit-scrollbar-track {
-            background: #f1f1f1;
-            border-radius: 10px;
-        }
-        
-        .scrollable-section::-webkit-scrollbar-thumb {
-            background: #1a3a5f;
-            border-radius: 10px;
-        }
-        
-        .scrollable-section::-webkit-scrollbar-thumb:hover {
-            background: #2c5a8c;
-        }
-        
-        .alert-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-        }
-        
-        @media (max-width: 768px) {
-            .alert-grid {
-                grid-template-columns: 1fr;
-            }
-            
-            .metric-card {
-                width: 100%;
-                margin: 10px 0;
-            }
+            width: 100%;
         }
     </style>
 </head>
 <body>
-    <header>
-        <div class="header-content">
-            <h1>Apex Fraud Studio</h1>
-            <div class="subtitle">Fraud Alert System</div>
-        </div>
-    </header>
+    <h1>Apex Fraud Studio</h1>
+    <div class="subtitle">Fraud Alert System</div>
     
-    <div class="container">
-        <div class="upload-section">
-            <h3>Upload Transaction Batch</h3>
-            <input type="file" id="fileInput" accept=".csv">
-            <button onclick="processFile()">Process Batch</button>
-            <div id="uploadStatus"></div>
-        </div>
+    <div class="upload-section">
+        <h3>Upload Transaction Batch</h3>
+        <input type="file" id="fileInput" accept=".csv">
+        <button onclick="processFile()">Process Batch</button>
+        <div id="uploadStatus"></div>
+    </div>
 
-        <div id="dashboard" class="dashboard">
-            <h3>System Performance Dashboard</h3>
-            <div id="metrics"></div>
-        </div>
+    <div id="dashboard" class="dashboard">
+        <h3>System Performance Dashboard</h3>
+        <div id="metrics"></div>
+    </div>
 
-        <div id="alertsSection" class="alert-section">
-            <h3>Fraud Alerts</h3>
-            <div class="alert-grid">
-                <div>
-                    <h4>High Confidence Alerts (≥50%)</h4>
-                    <div id="highConfidenceContainer" class="alert-container scrollable-section"></div>
-                </div>
-                <div>
-                    <h4>Low Confidence Alerts (<50%)</h4>
-                    <div id="lowConfidenceContainer" class="alert-container scrollable-section"></div>
-                </div>
-            </div>
-        </div>
+    <div id="alertsSection" class="alert-section">
+        <h3>High Confidence Alerts (≥50%)</h3>
+        <div id="highConfidenceContainer" class="alert-container"></div>
+        
+        <h3>Low Confidence Alerts (<50%)</h3>
+        <div id="lowConfidenceContainer" class="alert-container"></div>
     </div>
 
     <script>
-        // Mock data for demonstration
-        const mockAlerts = [
-            {
-                record_id: 101,
-                confidence: 0.85,
-                amount: "$245.67",
-                category: "Electronics",
-                customer_id: "CUST-7891",
-                merchant_id: "MERCH-4521",
-                step: "12",
-                risk_factors: "3 risk factors detected",
-                justifications: [
-                    {
-                        title: "Unusual Purchase Pattern",
-                        description: "Customer made 5 transactions in 2 hours",
-                        strength: 0.8,
-                        risk_level: "HIGH"
-                    },
-                    {
-                        title: "High Amount",
-                        description: "Transaction amount is 3x customer average",
-                        strength: 0.7,
-                        risk_level: "MEDIUM"
-                    }
-                ]
-            },
-            {
-                record_id: 102,
-                confidence: 0.72,
-                amount: "$89.99",
-                category: "Clothing",
-                customer_id: "CUST-6345",
-                merchant_id: "MERCH-7821",
-                step: "8",
-                risk_factors: "2 risk factors detected",
-                justifications: [
-                    {
-                        title: "New Merchant",
-                        description: "First transaction with this merchant",
-                        strength: 0.6,
-                        risk_level: "MEDIUM"
-                    }
-                ]
-            },
-            {
-                record_id: 103,
-                confidence: 0.45,
-                amount: "$32.50",
-                category: "Food",
-                customer_id: "CUST-9123",
-                merchant_id: "MERCH-1123",
-                step: "15",
-                risk_factors: "1 risk factor detected",
-                justifications: [
-                    {
-                        title: "Location Mismatch",
-                        description: "Transaction location differs from customer's usual area",
-                        strength: 0.4,
-                        risk_level: "LOW"
-                    }
-                ]
-            },
-            {
-                record_id: 104,
-                confidence: 0.38,
-                amount: "$120.00",
-                category: "Entertainment",
-                customer_id: "CUST-4456",
-                merchant_id: "MERCH-3345",
-                step: "22",
-                risk_factors: "1 risk factor detected",
-                justifications: [
-                    {
-                        title: "Time Anomaly",
-                        description: "Transaction occurred at unusual hour",
-                        strength: 0.3,
-                        risk_level: "LOW"
-                    }
-                ]
-            },
-            {
-                record_id: 105,
-                confidence: 0.91,
-                amount: "$567.89",
-                category: "Travel",
-                customer_id: "CUST-7789",
-                merchant_id: "MERCH-9901",
-                step: "5",
-                risk_factors: "4 risk factors detected",
-                justifications: [
-                    {
-                        title: "Velocity Alert",
-                        description: "Multiple high-value transactions in short time",
-                        strength: 0.9,
-                        risk_level: "HIGH"
-                    },
-                    {
-                        title: "Geographic Anomaly",
-                        description: "Transaction from high-risk country",
-                        strength: 0.8,
-                        risk_level: "HIGH"
-                    }
-                ]
-            }
-        ];
-
-        const mockDashboard = {
-            recall: "92.5%",
-            precision: "87.3%",
-            fraud_caught: "37",
-            fraud_cases: "40",
-            alerts_generated: "42",
-            false_alerts: "5",
-            alert_efficiency: "88.1%"
-        };
-
-        function processFile() {
+        async function processFile() {
             const fileInput = document.getElementById('fileInput');
             const statusDiv = document.getElementById('uploadStatus');
             
             if (!fileInput.files[0]) {
-                statusDiv.innerHTML = '<div class="error">Please select a file</div>';
+                statusDiv.innerHTML = '<span style="color: red;">Please select a file</span>';
                 return;
             }
 
-            statusDiv.innerHTML = '<div>Processing...</div>';
+            statusDiv.innerHTML = 'Processing...';
             
-            // Simulate API call delay
-            setTimeout(() => {
-                statusDiv.innerHTML = '<div class="success">Processing complete!</div>';
-                displayDashboard(mockDashboard);
-                displayAlerts(mockAlerts);
-            }, 1500);
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    statusDiv.innerHTML = '<span style="color: green;">Processing complete!</span>';
+                    displayDashboard(data.dashboard);
+                    displayAlerts(data.alerts);
+                } else {
+                    statusDiv.innerHTML = `<span style="color: red;">${data.error}</span>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<span style="color: red;">Upload failed: ${error}</span>`;
+            }
         }
 
         function displayDashboard(dashboard) {
@@ -416,20 +183,20 @@
         }
 
         function displayAlerts(alerts) {
-            // Sort alerts by confidence in descending order
-            alerts.sort((a, b) => b.confidence - a.confidence);
-            
             const highContainer = document.getElementById('highConfidenceContainer');
             const lowContainer = document.getElementById('lowConfidenceContainer');
             
             highContainer.innerHTML = '';
             lowContainer.innerHTML = '';
 
+            // Sort alerts by confidence in descending order
+            alerts.sort((a, b) => b.confidence - a.confidence);
+
             alerts.forEach(alert => {
                 const alertDiv = document.createElement('div');
-                alertDiv.className = `alert ${alert.confidence >= 0.5 ? 'high-confidence' : 'low-confidence'}`;
+                alertDiv.className = alert.confidence >= 0.5 ? 'alert' : 'alert low-confidence-alert';
                 alertDiv.innerHTML = `
-                    <h4>Alert #${alert.record_id} | Confidence: ${(alert.confidence * 100).toFixed(1)}%</h4>
+                    <h4>Alert #${alert.record_id} | Confidence: ${alert.confidence}</h4>
                     <p><strong>Amount:</strong> ${alert.amount} | <strong>Category:</strong> ${alert.category}</p>
                     <p><strong>Customer:</strong> ${alert.customer_id} | <strong>Merchant:</strong> ${alert.merchant_id} | <strong>Step:</strong> ${alert.step}</p>
                     <p><strong>Risk Factors:</strong> ${alert.risk_factors}</p>
@@ -444,7 +211,6 @@
                     </div>
                 `;
                 
-                // Separate into high and low confidence containers
                 if (alert.confidence >= 0.5) {
                     highContainer.appendChild(alertDiv);
                 } else {
