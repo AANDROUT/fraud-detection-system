@@ -3,166 +3,269 @@
 <head>
     <title>Apex Fraud Studio</title>
     <style>
+        :root {
+            --primary-blue: #1a3a5f;
+            --dark-blue: #0f2438;
+            --light-blue: #2c5a8c;
+            --accent-blue: #3a7bc8;
+            --white: #ffffff;
+            --light-gray: #f8f9fa;
+            --medium-gray: #e9ecef;
+            --dark-gray: #495057;
+            --black: #333333;
+            --success: #28a745;
+            --warning: #ffc107;
+            --danger: #dc3545;
+            --border-radius: 8px;
+            --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            --box-shadow-hover: 0 6px 18px rgba(0, 0, 0, 0.12);
+        }
+        
         body { 
-            font-family: Arial, sans-serif; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
             margin: 0;
-            background-color: white;
-            color: #333;
+            background-color: var(--light-gray);
+            color: var(--black);
+            line-height: 1.6;
         }
+        
         header {
-            background-color: #1a3a5f;
-            color: white;
-            padding: 30px 40px;
-            border-bottom: 3px solid #2c5a8c;
+            background: linear-gradient(135deg, var(--primary-blue) 0%, var(--dark-blue) 100%);
+            color: var(--white);
+            padding: 40px 50px;
+            border-bottom: 5px solid var(--accent-blue);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
+        
         h1 {
             margin: 0;
-            font-size: 2.2em;
+            font-size: 2.5em;
+            font-weight: 700;
+            letter-spacing: -0.5px;
         }
+        
         .subtitle {
             color: #c9d8e9;
-            font-size: 1.2em;
-            margin-top: 5px;
+            font-size: 1.3em;
+            margin-top: 8px;
+            font-weight: 300;
         }
+        
         .container {
             padding: 40px;
+            max-width: 1200px;
+            margin: 0 auto;
         }
+        
         .section-title {
-            background-color: #1a3a5f;
-            color: white;
-            padding: 15px 20px;
-            margin: 0;
-            border-radius: 8px 8px 0 0;
-            font-size: 1.3em;
+            font-size: 1.5em;
+            color: var(--primary-blue);
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid var(--medium-gray);
+            font-weight: 600;
         }
+        
         .upload-section { 
-            background: #f8f9fa; 
-            padding: 0;
-            border-radius: 8px;
+            background: var(--white); 
+            padding: 30px; 
+            border-radius: var(--border-radius);
             margin-bottom: 30px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border: 1px solid var(--medium-gray);
+            box-shadow: var(--box-shadow);
+            transition: transform 0.3s, box-shadow 0.3s;
         }
-        .upload-content {
-            padding: 25px;
+        
+        .upload-section:hover {
+            box-shadow: var(--box-shadow-hover);
+            transform: translateY(-2px);
         }
+        
         .dashboard { 
-            background: #f8f9fa;
-            padding: 0;
-            border-radius: 8px;
+            background: var(--white); 
+            padding: 30px; 
+            border-radius: var(--border-radius);
             margin-bottom: 30px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border: 1px solid var(--medium-gray);
+            box-shadow: var(--box-shadow);
             display: none;
         }
-        .dashboard-content {
-            padding: 20px;
-        }
+        
         .alert-section { 
-            background: #f8f9fa;
-            padding: 0;
-            border-radius: 8px;
+            background: var(--white); 
+            padding: 30px; 
+            border-radius: var(--border-radius);
             margin-bottom: 30px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border: 1px solid var(--medium-gray);
+            box-shadow: var(--box-shadow);
             display: none;
         }
-        .alert-content {
-            padding: 20px;
-        }
+        
         .alert-container {
             max-height: 400px;
             overflow-y: auto;
             padding-right: 10px;
+            margin-top: 15px;
         }
+        
         .alert { 
-            background: white; 
-            padding: 15px; 
-            margin: 10px 0; 
-            border-radius: 5px; 
-            border-left: 4px solid #dc3545;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            background: var(--light-gray); 
+            padding: 20px; 
+            margin: 15px 0; 
+            border-radius: var(--border-radius);
+            border-left: 5px solid var(--danger);
+            border: 1px solid var(--medium-gray);
+            transition: transform 0.2s;
         }
+        
+        .alert:hover {
+            transform: translateX(5px);
+        }
+        
         .low-confidence-alert {
-            border-left: 4px solid #ffc107;
+            border-left: 5px solid var(--warning);
         }
+        
         .metric-card { 
-            background: white; 
-            padding: 15px; 
-            margin: 10px; 
-            border-radius: 5px; 
+            background: var(--white); 
+            padding: 20px; 
+            margin: 15px; 
+            border-radius: var(--border-radius);
             display: inline-block; 
             width: 200px; 
             text-align: center;
-            border-left: 4px solid #28a745;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border: 1px solid var(--medium-gray);
+            box-shadow: var(--box-shadow);
+            transition: transform 0.2s;
         }
+        
+        .metric-card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .metric-card h4 {
+            color: var(--primary-blue);
+            margin-top: 0;
+            font-size: 1.1em;
+        }
+        
+        .metric-card h2 {
+            color: var(--dark-blue);
+            margin: 15px 0;
+            font-size: 2em;
+        }
+        
         .justification { 
-            background: #e9ecef; 
-            padding: 10px; 
-            margin: 5px 0; 
-            border-radius: 3px; 
+            background: var(--medium-gray); 
+            padding: 12px 15px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
+            border-left: 3px solid var(--accent-blue);
         }
+        
         button {
-            background-color: #1a3a5f;
-            color: white;
+            background: linear-gradient(to bottom, var(--primary-blue) 0%, var(--dark-blue) 100%);
+            color: var(--white);
             border: none;
-            padding: 12px 25px;
-            border-radius: 5px;
+            padding: 14px 28px;
+            border-radius: var(--border-radius);
             cursor: pointer;
             font-size: 1em;
-            font-weight: 500;
-            transition: background-color 0.3s;
+            font-weight: 600;
+            transition: all 0.3s;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
         }
+        
         button:hover {
-            background-color: #2c5a8c;
+            background: linear-gradient(to bottom, var(--light-blue) 0%, var(--primary-blue) 100%);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
         }
+        
         button.processing {
-            background-color: #6c757d;
+            background: var(--dark-gray);
             cursor: not-allowed;
         }
+        
         button.success {
-            background-color: #28a745;
+            background: linear-gradient(to bottom, var(--success) 0%, #1e7e34 100%);
         }
+        
         input[type="file"] {
-            padding: 10px;
-            margin: 10px 0;
-            border: 1px solid #ddd;
-            border-radius: 4px;
+            padding: 12px;
+            margin: 15px 0;
+            border: 2px dashed var(--medium-gray);
+            border-radius: var(--border-radius);
             width: 100%;
+            background-color: var(--light-gray);
+            transition: border-color 0.3s;
         }
+        
+        input[type="file"]:hover {
+            border-color: var(--accent-blue);
+        }
+        
         .loading-circle {
             display: inline-block;
             width: 20px;
             height: 20px;
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3498db;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-top: 3px solid var(--white);
             border-radius: 50%;
             animation: spin 1s linear infinite;
             margin-right: 10px;
             vertical-align: middle;
         }
+        
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
         #uploadStatus {
-            margin-top: 15px;
-            padding: 12px;
-            border-radius: 4px;
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: var(--border-radius);
             font-weight: 500;
         }
+        
         .status-processing {
             background-color: #e2f0ff;
-            color: #0066cc;
+            color: var(--light-blue);
             border: 1px solid #b3d9ff;
         }
+        
         .status-success {
             background-color: #d4f7d4;
-            color: #2d8515;
+            color: var(--success);
             border: 1px solid #a3e0a3;
         }
+        
         .status-error {
             background-color: #ffe6e6;
-            color: #cc0000;
+            color: var(--danger);
             border: 1px solid #ffb3b3;
+        }
+        
+        .alert h4 {
+            margin-top: 0;
+            color: var(--dark-blue);
+            font-size: 1.2em;
+        }
+        
+        .alert p {
+            margin: 8px 0;
+        }
+        
+        .justifications {
+            margin-top: 15px;
+        }
+        
+        .justification strong {
+            color: var(--primary-blue);
+        }
+        
+        .justification small {
+            color: var(--dark-gray);
         }
     </style>
 </head>
@@ -175,29 +278,22 @@
     <div class="container">
         <div class="upload-section">
             <h3 class="section-title">Upload Transaction Batch</h3>
-            <div class="upload-content">
-                <input type="file" id="fileInput" accept=".csv">
-                <button id="processButton" onclick="processFile()">Process Batch</button>
-                <div id="uploadStatus"></div>
-            </div>
+            <input type="file" id="fileInput" accept=".csv">
+            <button id="processButton" onclick="processFile()">Process Batch</button>
+            <div id="uploadStatus"></div>
         </div>
 
         <div id="dashboard" class="dashboard">
             <h3 class="section-title">System Performance Dashboard</h3>
-            <div class="dashboard-content">
-                <div id="metrics"></div>
-            </div>
+            <div id="metrics"></div>
         </div>
 
         <div id="alertsSection" class="alert-section">
-            <h3 class="section-title">Fraud Alerts</h3>
-            <div class="alert-content">
-                <h4>High Confidence Alerts (≥50%)</h3>
-                <div id="highConfidenceContainer" class="alert-container"></div>
-                
-                <h4>Low Confidence Alerts (<50%)</h3>
-                <div id="lowConfidenceContainer" class="alert-container"></div>
-            </div>
+            <h3 class="section-title">High Confidence Alerts (≥50%)</h3>
+            <div id="highConfidenceContainer" class="alert-container"></div>
+            
+            <h3 class="section-title">Low Confidence Alerts (<50%)</h3>
+            <div id="lowConfidenceContainer" class="alert-container"></div>
         </div>
     </div>
 
@@ -271,6 +367,11 @@
                     <h2>${dashboard.alerts_generated}</h2>
                     <small>${dashboard.false_alerts} false alerts</small>
                 </div>
+                <div class="metric-card">
+                    <h4>Efficiency</h4>
+                    <h2>${dashboard.alert_efficiency}</h2>
+                    <small>Fraud per alert</small>
+                </div>
             `;
             document.getElementById('dashboard').style.display = 'block';
         }
@@ -283,7 +384,7 @@
             lowContainer.innerHTML = '';
 
             // Sort alerts by confidence in descending order
-            alerts.sort((a, b) => b.confidence - a.confentialerts.sort((a, b) => b.confidence - a.confidence);
+            alerts.sort((a, b) => b.confidence - a.confidence);
 
             alerts.forEach(alert => {
                 const alertDiv = document.createElement('div');
