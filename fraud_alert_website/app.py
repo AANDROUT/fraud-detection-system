@@ -175,6 +175,15 @@ def get_xgboost_predictions(test_df):
         
         alerts = []
         all_predictions = []
+
+        # After getting predictions, add:
+        print(f"🔍 PROBABILITY ANALYSIS:")
+        print(f"   Min: {fraud_proba.min():.4f}")
+        print(f"   Max: {fraud_proba.max():.4f}") 
+        print(f"   Mean: {fraud_proba.mean():.4f}")
+        print(f"   % > 0.9: {np.mean(fraud_proba > 0.9):.2%}")
+        print(f"   % > 0.5: {np.mean(fraud_proba > 0.5):.2%}")
+        print(f"   % > 0.1: {np.mean(fraud_proba > 0.1):.2%}")
         
         # Use reasonable threshold for 90% recall
         threshold = 0.0028  # Start with this
@@ -592,6 +601,7 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     print(f"✅ Server ready on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 
