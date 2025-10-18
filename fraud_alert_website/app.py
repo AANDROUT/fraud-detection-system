@@ -161,7 +161,7 @@ def get_xgboost_predictions(test_df):
         all_predictions = []
         
         # ULTRA LOW THRESHOLD FOR MAXIMUM RECALL
-        threshold = 0.001  # Extremely low to catch 90%+ of fraud
+        threshold = 0.01  # Extremely low to catch 90%+ of fraud
         
         for i, prob in enumerate(fraud_proba):
             prob_float = float(prob)
@@ -576,4 +576,5 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     print(f"✅ Server ready on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
