@@ -176,7 +176,7 @@ def get_xgboost_predictions(test_df):
                 'actual_fraud': test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
             })
             
-            if prob_float > 0.01:  # Same threshold as before
+            if prob_float > 0.1:  # Same threshold as before
                 alerts.append({
                     'record_id': i,
                     'fraud_probability': prob_float,
@@ -432,6 +432,7 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     print(f"✅ Server ready on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 
