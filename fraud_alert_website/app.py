@@ -501,12 +501,22 @@ def upload_file():
             
             print("✅ All required columns present!")
             
-            # Data cleaning
+            # FIXED Data cleaning (proper indentation)
+            print("🧹 Cleaning data...")
             for col in df.columns:
                 if df[col].dtype == 'object':
+                    # Only clean string columns, don't convert to numeric!
                     df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x)
-                if col in ['amount', 'cust_tx_count_1d', 'first_time_pair', 'time_since_last_pair_tx']:
+                
+                # Only convert these specific numeric columns
+                if col in ['amount', 'log_amount', 'cust_tx_count_1d', 'cust_tx_count_7d', 
+                       'cust_median_amt_7d', 'amount_over_cust_median_7d', 
+                       'cust_unique_merchants_30d', 'first_time_pair', 
+                       'time_since_last_pair_tx', 'mch_tx_count_1d', 'mch_unique_customers_7d']:
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            
+            # DO NOT convert categorical columns like 'customer', 'merchant', 'category' to numeric here!
+            # Let the LabelEncoder handle them in get_xgboost_predictions
             
             df = df.reset_index().rename(columns={'index': 'original_index'})
             
@@ -601,12 +611,3 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     print(f"✅ Server ready on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
-
-
-
-
-
-
-
-
-
