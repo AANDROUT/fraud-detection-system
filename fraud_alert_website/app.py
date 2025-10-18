@@ -118,7 +118,7 @@ def create_fallback_model():
     print("✅ Fallback model created")
 
 def get_xgboost_predictions(test_df):
-    """Get predictions from XGBoost model - ULTRA AGGRESSIVE for 90%+ recall"""
+    """Get predictions from XGBoost model with PROPER encoding"""
     global model, label_encoders
     
     if model is None:
@@ -133,12 +133,26 @@ def get_xgboost_predictions(test_df):
             X_test = X_test.drop(columns=['fraud'])
             print("✅ Dropped 'fraud' column from features")
         
-        print(f"📊 X_test shape: {X_test.shape}")
+        print(f"📊 X_test shape before encoding: {X_test.shape}")
+        print(f"🔍 Data types: {X_test.dtypes}")
         
-        # Convert object columns to numeric
+        # CRITICAL FIX: Use EXACT same encoding as training
         for col in X_test.columns:
-            if X_test[col].dtype == 'object':
-                X_test[col] = pd.to_numeric(X_test[col], errors='coerce').fillna(0)
+            if col in label_encoders:
+                print(f"🔧 Properly encoding column: {col}")
+                # Convert to string and use the trained LabelEncoder
+                X_test[col] = X_test[col].astype(str)
+                
+                # Handle unseen categories by mapping them to most common class
+                unseen_mask = ~X_test[col].isin(label_encoders[col].classes_)
+                if unseen_mask.any():
+                    print(f"⚠️  Mapping {unseen_mask.sum()} unseen values in {col} to default")
+                    # Map unseen values to the first class (usually most common)
+                    X_test.loc[unseen_mask, col] = label_encoders[col].classes_[0]
+                
+                X_test[col] = label_encoders[col].transform(X_test[col])
+        
+        print(f"📊 X_test shape after encoding: {X_test.shape}")
         
         # Ensure all training columns are present
         if hasattr(model, 'get_booster'):
@@ -147,21 +161,23 @@ def get_xgboost_predictions(test_df):
             missing_cols = set(expected_features) - set(X_test.columns)
             for col in missing_cols:
                 X_test[col] = 0
+                print(f"➕ Added missing column: {col}")
             
             X_test = X_test[expected_features]
         
-        # ULTRA AGGRESSIVE THRESHOLD FOR 90%+ RECALL
+        # Get predictions with reasonable threshold
         fraud_proba = model.predict_proba(X_test)[:, 1]
         
         print(f"📊 Prediction range: {fraud_proba.min():.4f} to {fraud_proba.max():.4f}")
+        print(f"📈 Alerts above 0.1: {np.sum(fraud_proba > 0.1)}")
+        print(f"📈 Alerts above 0.05: {np.sum(fraud_proba > 0.05)}")
         print(f"📈 Alerts above 0.01: {np.sum(fraud_proba > 0.01)}")
-        print(f"📈 Alerts above 0.001: {np.sum(fraud_proba > 0.001)}")
         
         alerts = []
         all_predictions = []
         
-        # ULTRA LOW THRESHOLD FOR MAXIMUM RECALL
-        threshold = 0.0035  # Extremely low to catch 90%+ of fraud
+        # Use reasonable threshold for 90% recall
+        threshold = 0.05  # Start with this
         
         for i, prob in enumerate(fraud_proba):
             prob_float = float(prob)
@@ -182,7 +198,7 @@ def get_xgboost_predictions(test_df):
                     'step': str(test_df.iloc[i].get('step', 'Unknown'))
                 })
         
-        print(f"✅ Generated {len(alerts)} alerts (ULTRA LOW threshold: {threshold})")
+        print(f"✅ Generated {len(alerts)} alerts (threshold: {threshold})")
         return alerts, all_predictions
         
     except Exception as e:
@@ -576,6 +592,7 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     print(f"✅ Server ready on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 
