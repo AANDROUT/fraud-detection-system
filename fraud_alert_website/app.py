@@ -5,6 +5,8 @@ import os
 import joblib
 from werkzeug.utils import secure_filename
 from sklearn.preprocessing import LabelEncoder
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import precision_recall_curve
 import xgboost as xgb
 
 app = Flask(__name__)
@@ -14,10 +16,11 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 # Global variables for model and encoders
 model = None
 label_encoders = None
+optimal_threshold = None  # Store the optimal threshold
 
 def load_model():
     """Load the pre-trained XGBoost model"""
-    global model, label_encoders
+    global model, label_encoders, optimal_threshold
     
     try:
         if not os.path.exists('fraud_model.pkl'):
@@ -26,7 +29,9 @@ def load_model():
         else:
             model = joblib.load('fraud_model.pkl')
             label_encoders = joblib.load('label_encoders.pkl')
+            optimal_threshold = joblib.load('optimal_threshold.pkl')
             print("✅ Model loaded successfully")
+            print(f"🎯 Using optimal threshold: {optimal_threshold}")
     except Exception as e:
         print(f"❌ Error loading model: {e}")
         print("🔄 Training new model...")
@@ -55,7 +60,7 @@ def load_dataset_from_parts():
 
 def train_and_save_model():
     """Train and save the model using the 6-part dataset"""
-    global model, label_encoders
+    global model, label_encoders, optimal_threshold
     
     try:
         print("📥 Loading dataset from parts...")
@@ -77,9 +82,11 @@ def train_and_save_model():
         
         print("🏋️ Training XGBoost model...")
         ratio = (y == 0).sum() / (y == 1).sum()
+        
+        # CRITICAL FIX: Use same hyperparameters as Jupyter notebook
         model = xgb.XGBClassifier(
-            n_estimators=200,
-            learning_rate=0.1,
+            n_estimators=1000,        # Changed from 200 to 1000
+            learning_rate=0.05,       # Changed from 0.1 to 0.05
             max_depth=6,
             subsample=0.8,
             colsample_bytree=0.8,
@@ -89,11 +96,36 @@ def train_and_save_model():
             random_state=42
         )
         
-        model.fit(X_encoded, y, verbose=False)
+        # Use proper train/validation split like Jupyter
+        X_train, X_temp, y_train, y_temp = train_test_split(
+            X_encoded, y, test_size=0.30, stratify=y, random_state=42
+        )
+        X_val, X_test, y_val, y_test = train_test_split(
+            X_temp, y_temp, test_size=0.50, stratify=y_temp, random_state=42
+        )
+        
+        print(f"Train size: {X_train.shape}, Validation size: {X_val.shape}, Test size: {X_test.shape}")
+        
+        # Train with validation set
+        model.fit(
+            X_train, y_train,
+            eval_set=[(X_val, y_val)],
+            verbose=False
+        )
+        
+        # Find optimal threshold like in Jupyter
+        val_proba = model.predict_proba(X_val)[:, 1]
+        prec, rec, thr = precision_recall_curve(y_val, val_proba)
+        f1 = 2 * prec * rec / (prec + rec + 1e-9)
+        best = f1.argmax()
+        optimal_threshold = float(thr[max(best - 1, 0)])
+        
+        print(f"🎯 Optimal threshold found: {optimal_threshold}")
         
         # Save for future use
         joblib.dump(model, 'fraud_model.pkl')
         joblib.dump(label_encoders, 'label_encoders.pkl')
+        joblib.dump(optimal_threshold, 'optimal_threshold.pkl')
         print("✅ Model trained and saved successfully")
         
     except Exception as e:
@@ -102,7 +134,7 @@ def train_and_save_model():
 
 def create_fallback_model():
     """Create a simple fallback model if training fails"""
-    global model, label_encoders
+    global model, label_encoders, optimal_threshold
     
     print("🛠️ Creating fallback model...")
     from sklearn.ensemble import RandomForestClassifier
@@ -115,11 +147,12 @@ def create_fallback_model():
     model.fit(X_dummy, y_dummy)
     
     label_encoders = {}
+    optimal_threshold = 0.5
     print("✅ Fallback model created")
 
 def get_xgboost_predictions(test_df):
     """Get predictions from XGBoost model with PROPER encoding"""
-    global model, label_encoders
+    global model, label_encoders, optimal_threshold
     
     if model is None:
         load_model()
@@ -165,13 +198,13 @@ def get_xgboost_predictions(test_df):
             
             X_test = X_test[expected_features]
         
-        # Get predictions with reasonable threshold
+        # Get predictions
         fraud_proba = model.predict_proba(X_test)[:, 1]
         
         print(f"📊 Prediction range: {fraud_proba.min():.4f} to {fraud_proba.max():.4f}")
+        print(f"📈 Alerts above optimal threshold ({optimal_threshold}): {np.sum(fraud_proba > optimal_threshold)}")
         print(f"📈 Alerts above 0.1: {np.sum(fraud_proba > 0.1)}")
         print(f"📈 Alerts above 0.05: {np.sum(fraud_proba > 0.05)}")
-        print(f"📈 Alerts above 0.01: {np.sum(fraud_proba > 0.01)}")
         
         alerts = []
         all_predictions = []
@@ -185,8 +218,8 @@ def get_xgboost_predictions(test_df):
         print(f"   % > 0.5: {np.mean(fraud_proba > 0.5):.2%}")
         print(f"   % > 0.1: {np.mean(fraud_proba > 0.1):.2%}")
         
-        # Use reasonable threshold for 90% recall
-        threshold = 0.0028  # Start with this
+        # Use the OPTIMAL threshold from training (not arbitrary low threshold)
+        threshold = optimal_threshold
         
         for i, prob in enumerate(fraud_proba):
             prob_float = float(prob)
@@ -207,7 +240,7 @@ def get_xgboost_predictions(test_df):
                     'step': str(test_df.iloc[i].get('step', 'Unknown'))
                 })
         
-        print(f"✅ Generated {len(alerts)} alerts (threshold: {threshold})")
+        print(f"✅ Generated {len(alerts)} alerts (optimal threshold: {threshold})")
         return alerts, all_predictions
         
     except Exception as e:
@@ -215,6 +248,8 @@ def get_xgboost_predictions(test_df):
         import traceback
         traceback.print_exc()
         return [], []
+
+# ... [Keep all the other functions the same: create_individualized_justifications, validate_uploaded_data, upload_file, etc.]
 
 def create_individualized_justifications(df, alerts):
     """Create UNIQUE justifications for each alert based on actual feature values"""
