@@ -177,7 +177,7 @@ def get_xgboost_predictions(test_df):
         all_predictions = []
         
         # Use reasonable threshold for 90% recall
-        threshold = 0.005  # Start with this
+        threshold = 0.0028  # Start with this
         
         for i, prob in enumerate(fraud_proba):
             prob_float = float(prob)
@@ -592,6 +592,7 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     print(f"✅ Server ready on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
 
 
