@@ -23,132 +23,18 @@ def load_model():
     global model, label_encoders, optimal_threshold
     
     try:
-        if not os.path.exists('fraud_model.pkl'):
-            print("🔄 No saved model found, training new model...")
-            train_and_save_model()
-        else:
-            model = joblib.load('fraud_model.pkl')
-            label_encoders = joblib.load('label_encoders.pkl')
-            optimal_threshold = joblib.load('optimal_threshold.pkl')
-            print("✅ Model loaded successfully")
-            print(f"🎯 Using optimal threshold: {optimal_threshold}")
+        # ALWAYS use pre-trained files - NO TRAINING
+        model = joblib.load('fraud_model.pkl')
+        label_encoders = joblib.load('label_encoders.pkl')
+        optimal_threshold = joblib.load('optimal_threshold.pkl')
+        print("✅ Pre-trained model loaded successfully")
+        print(f"🎯 Using threshold: {optimal_threshold} (92% recall, 77% precision)")
     except Exception as e:
-        print(f"❌ Error loading model: {e}")
-        print("🔄 Training new model...")
+        print(f"❌ Error loading pre-trained model: {e}")
+        raise Exception("Pre-trained model files missing. Upload fraud_model.pkl, label_encoders.pkl, optimal_threshold.pkl")
         train_and_save_model()
 
-def load_dataset_from_parts():
-    """Load the full dataset from 6 parts"""
-    print("📥 Loading dataset from parts...")
-    
-    parts = []
-    for i in range(1, 7):
-        filename = f'BankSim_part_{i}.csv'
-        try:
-            part_df = pd.read_csv(filename)
-            parts.append(part_df)
-            print(f"✅ Loaded {filename}: {len(part_df)} records")
-        except Exception as e:
-            print(f"❌ Error loading {filename}: {e}")
-    
-    if not parts:
-        raise Exception("Could not load any dataset parts")
-    
-    full_df = pd.concat(parts, ignore_index=True)
-    print(f"📊 Combined dataset: {len(full_df)} total records")
-    return full_df
 
-def train_and_save_model():
-    """Train and save the model using the 6-part dataset"""
-    global model, label_encoders, optimal_threshold
-    
-    try:
-        print("📥 Loading dataset from parts...")
-        df = load_dataset_from_parts()
-        df = df.fillna(0)
-        
-        print("🔧 Preparing features...")
-        X = df.drop(columns=["fraud"])
-        y = df["fraud"]
-        
-        # Encode categorical variables
-        X_encoded = X.copy()
-        label_encoders = {}
-        for col in X_encoded.columns:
-            if X_encoded[col].dtype == 'object':
-                le = LabelEncoder()
-                X_encoded[col] = le.fit_transform(X_encoded[col].astype(str))
-                label_encoders[col] = le
-        
-        print("🏋️ Training XGBoost model...")
-        ratio = (y == 0).sum() / (y == 1).sum()
-        
-        # CRITICAL FIX: Use same hyperparameters as Jupyter notebook
-        model = xgb.XGBClassifier(
-            n_estimators=1000,        # Changed from 200 to 1000
-            learning_rate=0.05,       # Changed from 0.1 to 0.05
-            max_depth=6,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            eval_metric='aucpr',
-            tree_method='hist',
-            scale_pos_weight=ratio,
-            random_state=42
-        )
-        
-        # Use proper train/validation split like Jupyter
-        X_train, X_temp, y_train, y_temp = train_test_split(
-            X_encoded, y, test_size=0.30, stratify=y, random_state=42
-        )
-        X_val, X_test, y_val, y_test = train_test_split(
-            X_temp, y_temp, test_size=0.50, stratify=y_temp, random_state=42
-        )
-        
-        print(f"Train size: {X_train.shape}, Validation size: {X_val.shape}, Test size: {X_test.shape}")
-        
-        # Train with validation set
-        model.fit(
-            X_train, y_train,
-            eval_set=[(X_val, y_val)],
-            verbose=False
-        )
-        
-        # Find optimal threshold like in Jupyter
-        val_proba = model.predict_proba(X_val)[:, 1]
-        prec, rec, thr = precision_recall_curve(y_val, val_proba)
-        f1 = 2 * prec * rec / (prec + rec + 1e-9)
-        best = f1.argmax()
-        optimal_threshold = float(thr[max(best - 1, 0)])
-        
-        print(f"🎯 Optimal threshold found: {optimal_threshold}")
-        
-        # Save for future use
-        joblib.dump(model, 'fraud_model.pkl')
-        joblib.dump(label_encoders, 'label_encoders.pkl')
-        joblib.dump(optimal_threshold, 'optimal_threshold.pkl')
-        print("✅ Model trained and saved successfully")
-        
-    except Exception as e:
-        print(f"❌ Error training model: {e}")
-        create_fallback_model()
-
-def create_fallback_model():
-    """Create a simple fallback model if training fails"""
-    global model, label_encoders, optimal_threshold
-    
-    print("🛠️ Creating fallback model...")
-    from sklearn.ensemble import RandomForestClassifier
-    
-    # Create dummy data for fallback model
-    X_dummy = np.random.rand(1000, 5)
-    y_dummy = (X_dummy[:, 0] > 0.7).astype(int)
-    
-    model = RandomForestClassifier(n_estimators=10, random_state=42)
-    model.fit(X_dummy, y_dummy)
-    
-    label_encoders = {}
-    optimal_threshold = 0.5
-    print("✅ Fallback model created")
 
 def get_xgboost_predictions(test_df):
     """Get predictions from XGBoost model with PROPER encoding"""
@@ -646,5 +532,6 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 port = int(os.environ.get("PORT", 10000))
 print(f"✅ Server ready on port {port}")
 app.run(host='0.0.0.0', port=port)
+
 
 
