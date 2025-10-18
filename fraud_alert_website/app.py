@@ -87,10 +87,19 @@ def get_xgboost_predictions(test_df):
         # Get predictions
         fraud_proba = model.predict_proba(X_test)[:, 1]
         
-        print(f"📊 Prediction range: {fraud_proba.min():.4f} to {fraud_proba.max():.4f}")
-        print(f"📈 Alerts above optimal threshold ({optimal_threshold}): {np.sum(fraud_proba > optimal_threshold)}")
-        print(f"📈 Alerts above 0.1: {np.sum(fraud_proba > 0.1)}")
-        print(f"📈 Alerts above 0.05: {np.sum(fraud_proba > 0.05)}")
+        # ADD THIS DEBUG SECTION (PROPERLY INDENTED):
+        if 'fraud' in test_df.columns:
+            actual_fraud_indices = test_df[test_df['fraud'] == 1].index
+            fraud_probabilities = fraud_proba[actual_fraud_indices]
+            
+            print(f"🔍 FRAUD CASE ANALYSIS:")
+            print(f"   Actual fraud cases: {len(actual_fraud_indices)}")
+            print(f"   Fraud case probabilities - Min: {fraud_probabilities.min():.4f}")
+            print(f"   Fraud case probabilities - Max: {fraud_probabilities.max():.4f}")
+            print(f"   Fraud case probabilities - Mean: {fraud_probabilities.mean():.4f}")
+            print(f"   % of fraud cases above 0.01: {np.mean(fraud_probabilities > 0.01):.1%}")
+            print(f"   % of fraud cases above 0.1: {np.mean(fraud_probabilities > 0.1):.1%}")
+            print(f"   % of fraud cases above 0.5: {np.mean(fraud_probabilities > 0.5):.1%}")
         
         alerts = []
         all_predictions = []
@@ -532,6 +541,7 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 port = int(os.environ.get("PORT", 10000))
 print(f"✅ Server ready on port {port}")
 app.run(host='0.0.0.0', port=port)
+
 
 
 
