@@ -643,6 +643,8 @@ if __name__ == '__main__':
     if not os.path.exists(app.config['UPLOAD_FOLDER']):
         os.makedirs(app.config['UPLOAD_FOLDER'])
     
-    port = int(os.environ.get("PORT", 5000))
+    # Render-specific port binding
+    port = int(os.environ.get("PORT", 10000))
     print(f"✅ Server ready on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(host='0.0.0.0', port=port)
+
