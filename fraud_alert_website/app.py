@@ -193,7 +193,7 @@ def get_xgboost_predictions(test_df):
 
 def create_individualized_justifications(df, alerts):
     """Create UNIQUE justifications for each alert based on actual feature values"""
-    print(f"🔍 Creating INDIVIDUALIZED justifications for {len(alerts)} alerts")
+    print(f"Creating INDIVIDUALIZED justifications for {len(alerts)} alerts")
     
     enhanced_alerts = []
     
@@ -217,23 +217,23 @@ def create_individualized_justifications(df, alerts):
         # 1. DYNAMIC AMOUNT ANALYSIS (based on actual values)
         amount = record_data.get('amount', 0)
         if amount > feature_stats.get('amount', {}).get('q90', 500):
-            strength = min(0.95, (amount - 200) / 1000)
+            strength = min(0.95, max(0.1, (amount - 200) / 1000))
             justifications.append({
                 'category': 'EXTREME_AMOUNT',
                 'feature': 'amount',
                 'strength': strength,
-                'title': '💰 Extreme Amount',
+                'title': 'Extreme Amount',
                 'description': f"Amount ${amount:.2f} in top 10% of all transactions",
                 'risk_level': 'CRITICAL',
                 'context': f"Extremely high amount - ${amount:.2f} is unusually large"
             })
         elif amount > feature_stats.get('amount', {}).get('q75', 200):
-            strength = min(0.7, (amount - 100) / 500)
+            strength = min(0.7, max(0.1, (amount - 100) / 500))
             justifications.append({
                 'category': 'HIGH_AMOUNT',
                 'feature': 'amount',
                 'strength': strength,
-                'title': '💰 High Amount',
+                'title': 'High Amount',
                 'description': f"Amount ${amount:.2f} in top 25% of transactions",
                 'risk_level': 'HIGH',
                 'context': f"Above-average transaction amount of ${amount:.2f}"
@@ -243,32 +243,32 @@ def create_individualized_justifications(df, alerts):
                 'category': 'MODERATE_AMOUNT',
                 'feature': 'amount',
                 'strength': 0.4,
-                'title': '💰 Moderate Amount',
+                'title': 'Moderate Amount',
                 'description': f"Amount ${amount:.2f}",
                 'risk_level': 'MEDIUM',
                 'context': "Transaction amount carries moderate risk"
             })
         
-        # 2. TRANSACTION FREQUENCY ANALYSIS
+        # 2. TRANSACTION FREQUENCY ANALYSIS (1 step = 1 day)
         daily_tx = record_data.get('cust_tx_count_1d', 0)
         if daily_tx > feature_stats.get('cust_tx_count_1d', {}).get('q90', 8):
-            strength = min(0.9, daily_tx / 15)
+            strength = min(0.9, max(0.1, daily_tx / 15))
             justifications.append({
                 'category': 'EXTREME_FREQUENCY',
                 'feature': 'cust_tx_count_1d',
                 'strength': strength,
-                'title': '📈 Extreme Frequency',
-                'description': f"{daily_tx} transactions today - extremely high activity",
+                'title': 'Extreme Daily Frequency',
+                'description': f"{daily_tx} transactions in one day - extremely high activity",
                 'risk_level': 'CRITICAL',
-                'context': f"Customer made {daily_tx} transactions in one day"
+                'context': f"Customer made {daily_tx} transactions in a single day"
             })
         elif daily_tx > feature_stats.get('cust_tx_count_1d', {}).get('q75', 4):
-            strength = min(0.6, daily_tx / 8)
+            strength = min(0.6, max(0.1, daily_tx / 8))
             justifications.append({
                 'category': 'HIGH_FREQUENCY',
                 'feature': 'cust_tx_count_1d',
                 'strength': strength,
-                'title': '📈 High Frequency',
+                'title': 'High Daily Frequency',
                 'description': f"{daily_tx} transactions today - elevated activity",
                 'risk_level': 'HIGH',
                 'context': f"Unusually high daily transaction count: {daily_tx}"
@@ -277,60 +277,70 @@ def create_individualized_justifications(df, alerts):
         # 3. BEHAVIORAL ANOMALY DETECTION
         amount_over_median = record_data.get('amount_over_cust_median_7d', 0)
         if amount_over_median > 10:
-            strength = min(0.95, amount_over_median / 20)
+            strength = min(0.95, max(0.1, amount_over_median / 20))
             justifications.append({
                 'category': 'MAJOR_BEHAVIOR_CHANGE',
                 'feature': 'amount_over_cust_median_7d',
                 'strength': strength,
-                'title': '📊 Major Behavioral Anomaly',
-                'description': f"Amount {amount_over_median:.1f}x above customer's normal spending",
+                'title': 'Major Behavioral Anomaly',
+                'description': f"Amount {amount_over_median:.1f}x above customer's 7-day median",
                 'risk_level': 'CRITICAL',
-                'context': "Massive deviation from customer's typical behavior"
+                'context': "Massive deviation from customer's typical spending pattern"
             })
         elif amount_over_median > 5:
-            strength = min(0.8, amount_over_median / 10)
+            strength = min(0.8, max(0.1, amount_over_median / 10))
             justifications.append({
                 'category': 'BEHAVIORAL_ANOMALY',
                 'feature': 'amount_over_cust_median_7d',
                 'strength': strength,
-                'title': '📊 Behavioral Anomaly',
-                'description': f"Amount {amount_over_median:.1f}x above normal spending",
+                'title': 'Behavioral Anomaly',
+                'description': f"Amount {amount_over_median:.1f}x above 7-day median spending",
                 'risk_level': 'HIGH',
-                'context': "Significant deviation from customer's pattern"
+                'context': "Significant deviation from customer's spending pattern"
             })
         elif amount_over_median > 2:
             justifications.append({
                 'category': 'SPENDING_CHANGE',
                 'feature': 'amount_over_cust_median_7d',
                 'strength': 0.5,
-                'title': '📊 Spending Pattern Change',
+                'title': 'Spending Pattern Change',
                 'description': f"Amount {amount_over_median:.1f}x above 7-day median",
                 'risk_level': 'MEDIUM',
-                'context': "Different from customer's usual spending"
+                'context': "Different from customer's usual spending pattern"
             })
         
-        # 4. TRANSACTION TIMING ANALYSIS
+        # 4. TRANSACTION TIMING ANALYSIS (1 step = 1 day)
         time_since_last = record_data.get('time_since_last_pair_tx', -1)
-        if 0 <= time_since_last < 1.0:
+        if 0 <= time_since_last < 0.1:  # Same day repeat (very rapid)
             justifications.append({
-                'category': 'EXTREMELY_RAPID',
+                'category': 'SAME_DAY_REPEAT',
                 'feature': 'time_since_last_pair_tx',
                 'strength': 0.9,
-                'title': '⚡ Extremely Rapid Repeat',
-                'description': f"Repeat transaction within {time_since_last:.1f} time units",
+                'title': 'Same Day Repeat',
+                'description': f"Repeat transaction within same day (step difference: {time_since_last:.1f})",
                 'risk_level': 'CRITICAL',
-                'context': "Extremely quick repeat with same merchant"
+                'context': "Extremely quick repeat transaction with same merchant on same day"
             })
-        elif 0 <= time_since_last < 5.0:
-            strength = 0.7 if time_since_last < 2.0 else 0.5
+        elif 0 <= time_since_last < 1.0:  # Within 1 day
+            strength = 0.8 if time_since_last < 0.5 else 0.6
             justifications.append({
                 'category': 'RAPID_REPEAT',
                 'feature': 'time_since_last_pair_tx',
                 'strength': strength,
-                'title': '⚡ Rapid Repeat',
-                'description': f"Repeat within {time_since_last:.1f} time units",
+                'title': 'Rapid Repeat',
+                'description': f"Repeat within {time_since_last:.1f} days",
                 'risk_level': 'HIGH',
-                'context': "Quick repeat transaction pattern detected"
+                'context': "Quick repeat transaction pattern with same merchant"
+            })
+        elif 0 <= time_since_last < 3.0:  # Within 3 days
+            justifications.append({
+                'category': 'RECENT_REPEAT',
+                'feature': 'time_since_last_pair_tx',
+                'strength': 0.4,
+                'title': 'Recent Repeat',
+                'description': f"Repeat within {time_since_last:.1f} days",
+                'risk_level': 'MEDIUM',
+                'context': "Recent repeat transaction with same merchant"
             })
         
         # 5. CATEGORY-SPECIFIC RISK
@@ -346,7 +356,7 @@ def create_individualized_justifications(df, alerts):
                 'category': 'CATEGORY_RISK',
                 'feature': 'category',
                 'strength': category_strength[category],
-                'title': '🎯 Category Risk',
+                'title': 'Category Risk',
                 'description': f"Transaction in {category} category",
                 'risk_level': 'HIGH' if category_strength[category] > 0.6 else 'MEDIUM',
                 'context': f"This category has specific fraud patterns"
@@ -358,21 +368,21 @@ def create_individualized_justifications(df, alerts):
                 'category': 'NEW_RELATIONSHIP',
                 'feature': 'first_time_pair',
                 'strength': 0.6,
-                'title': '🆕 First-Time Merchant',
+                'title': 'First-Time Merchant',
                 'description': "First transaction with this merchant",
                 'risk_level': 'MEDIUM',
                 'context': "New customer-merchant relationship"
             })
         
-        # 7. CUSTOMER HISTORY ANALYSIS
+        # 7. CUSTOMER HISTORY ANALYSIS (30 days = 30 steps)
         unique_merchants = record_data.get('cust_unique_merchants_30d', 0)
         if unique_merchants > 20:
             justifications.append({
                 'category': 'BROAD_MERCHANT_USAGE',
                 'feature': 'cust_unique_merchants_30d',
                 'strength': 0.5,
-                'title': '🏪 Diverse Merchant Usage',
-                'description': f"Used {unique_merchants} different merchants recently",
+                'title': 'Diverse Merchant Usage',
+                'description': f"Used {unique_merchants} different merchants in last 30 days",
                 'risk_level': 'MEDIUM',
                 'context': "Customer transacts with many different merchants"
             })
@@ -382,7 +392,7 @@ def create_individualized_justifications(df, alerts):
         
         # Sort by strength and take top justifications
         justifications.sort(key=lambda x: x['strength'], reverse=True)
-        enhanced_alert['advanced_justifications'] = justifications[:5]  # Top 5 unique reasons
+        enhanced_alert['advanced_justifications'] = justifications[:5]
         enhanced_alert['risk_factors'] = len(justifications)
         enhanced_alert['primary_risk_factor'] = justifications[0]['category'] if justifications else 'UNKNOWN'
         
@@ -396,17 +406,7 @@ def create_individualized_justifications(df, alerts):
         
         enhanced_alerts.append(enhanced_alert)
     
-    print(f"✅ Enhanced {len(alerts)} alerts with UNIQUE justifications")
-    
-    # Show justification variety
-    if enhanced_alerts:
-        justification_counts = {}
-        for alert in enhanced_alerts:
-            for j in alert.get('advanced_justifications', []):
-                cat = j['category']
-                justification_counts[cat] = justification_counts.get(cat, 0) + 1
-        print(f"🎯 Justification variety: {justification_counts}")
-    
+    print(f"Enhanced {len(alerts)} alerts with UNIQUE justifications")
     return enhanced_alerts, {}
 
 def validate_uploaded_data(df):
@@ -576,3 +576,4 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     print(f"✅ Server ready on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
