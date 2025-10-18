@@ -118,7 +118,7 @@ def create_fallback_model():
     print("✅ Fallback model created")
 
 def get_xgboost_predictions(test_df):
-    """Get predictions from XGBoost model"""
+    """Get predictions from XGBoost model - ULTRA AGGRESSIVE for 90%+ recall"""
     global model, label_encoders
     
     if model is None:
@@ -135,7 +135,7 @@ def get_xgboost_predictions(test_df):
         
         print(f"📊 X_test shape: {X_test.shape}")
         
-        # Convert object columns to numeric (skip encoding for now)
+        # Convert object columns to numeric
         for col in X_test.columns:
             if X_test[col].dtype == 'object':
                 X_test[col] = pd.to_numeric(X_test[col], errors='coerce').fillna(0)
@@ -150,18 +150,18 @@ def get_xgboost_predictions(test_df):
             
             X_test = X_test[expected_features]
         
-        # Get predictions with LOWER THRESHOLD for 90% recall
+        # ULTRA AGGRESSIVE THRESHOLD FOR 90%+ RECALL
         fraud_proba = model.predict_proba(X_test)[:, 1]
         
         print(f"📊 Prediction range: {fraud_proba.min():.4f} to {fraud_proba.max():.4f}")
-        print(f"📈 Alerts above 0.05: {np.sum(fraud_proba > 0.05)}")
         print(f"📈 Alerts above 0.01: {np.sum(fraud_proba > 0.01)}")
+        print(f"📈 Alerts above 0.001: {np.sum(fraud_proba > 0.001)}")
         
         alerts = []
         all_predictions = []
         
-        # LOWER THRESHOLD TO CATCH MORE FRAUD
-        threshold = 0.01  # Lowered from 0.1 for higher recall
+        # ULTRA LOW THRESHOLD FOR MAXIMUM RECALL
+        threshold = 0.001  # Extremely low to catch 90%+ of fraud
         
         for i, prob in enumerate(fraud_proba):
             prob_float = float(prob)
@@ -182,7 +182,7 @@ def get_xgboost_predictions(test_df):
                     'step': str(test_df.iloc[i].get('step', 'Unknown'))
                 })
         
-        print(f"✅ Generated {len(alerts)} alerts (threshold: {threshold})")
+        print(f"✅ Generated {len(alerts)} alerts (ULTRA LOW threshold: {threshold})")
         return alerts, all_predictions
         
     except Exception as e:
@@ -191,11 +191,22 @@ def get_xgboost_predictions(test_df):
         traceback.print_exc()
         return [], []
 
-def create_ultra_aggressive_justifications(df, alerts):
-    """ULTRA-AGGRESSIVE for 90%+ recall - CATCH EVERYTHING"""
-    print(f"🔍 ULTRA-AGGRESSIVE 90%+ RECALL SYSTEM - Processing {len(alerts)} alerts")
+def create_individualized_justifications(df, alerts):
+    """Create UNIQUE justifications for each alert based on actual feature values"""
+    print(f"🔍 Creating INDIVIDUALIZED justifications for {len(alerts)} alerts")
     
     enhanced_alerts = []
+    
+    # Analyze feature distributions for dynamic thresholds
+    feature_stats = {}
+    for col in ['amount', 'cust_tx_count_1d', 'amount_over_cust_median_7d', 'time_since_last_pair_tx']:
+        if col in df.columns:
+            feature_stats[col] = {
+                'mean': df[col].mean(),
+                'std': df[col].std(),
+                'q75': df[col].quantile(0.75),
+                'q90': df[col].quantile(0.90)
+            }
     
     for alert in alerts:
         record_data = alert['raw_data']
@@ -203,55 +214,198 @@ def create_ultra_aggressive_justifications(df, alerts):
         
         justifications = []
         
-        # 1. ANY TRANSACTION AT ALL
-        justifications.append({
-            'category': 'BASIC_RISK', 'feature': 'any_transaction', 'strength': 0.1,
-            'title': '🎯 Transaction Activity', 'description': "Any transaction carries some risk",
-            'risk_level': 'LOW', 'context': "Baseline transaction risk"
-        })
-        
-        # 2. AMOUNT-BASED (even small amounts)
+        # 1. DYNAMIC AMOUNT ANALYSIS (based on actual values)
         amount = record_data.get('amount', 0)
-        if amount > 0:
+        if amount > feature_stats.get('amount', {}).get('q90', 500):
+            strength = min(0.95, (amount - 200) / 1000)
             justifications.append({
-                'category': 'AMOUNT_PRESENT', 'feature': 'amount', 'strength': 0.2,
-                'title': '💰 Monetary Value', 'description': f"Amount ${amount:.2f}",
-                'risk_level': 'LOW', 'context': "Transaction involves monetary value"
+                'category': 'EXTREME_AMOUNT',
+                'feature': 'amount',
+                'strength': strength,
+                'title': '💰 Extreme Amount',
+                'description': f"Amount ${amount:.2f} in top 10% of all transactions",
+                'risk_level': 'CRITICAL',
+                'context': f"Extremely high amount - ${amount:.2f} is unusually large"
+            })
+        elif amount > feature_stats.get('amount', {}).get('q75', 200):
+            strength = min(0.7, (amount - 100) / 500)
+            justifications.append({
+                'category': 'HIGH_AMOUNT',
+                'feature': 'amount',
+                'strength': strength,
+                'title': '💰 High Amount',
+                'description': f"Amount ${amount:.2f} in top 25% of transactions",
+                'risk_level': 'HIGH',
+                'context': f"Above-average transaction amount of ${amount:.2f}"
+            })
+        elif amount > 50:
+            justifications.append({
+                'category': 'MODERATE_AMOUNT',
+                'feature': 'amount',
+                'strength': 0.4,
+                'title': '💰 Moderate Amount',
+                'description': f"Amount ${amount:.2f}",
+                'risk_level': 'MEDIUM',
+                'context': "Transaction amount carries moderate risk"
             })
         
-        # 3. ANY CATEGORY
+        # 2. TRANSACTION FREQUENCY ANALYSIS
+        daily_tx = record_data.get('cust_tx_count_1d', 0)
+        if daily_tx > feature_stats.get('cust_tx_count_1d', {}).get('q90', 8):
+            strength = min(0.9, daily_tx / 15)
+            justifications.append({
+                'category': 'EXTREME_FREQUENCY',
+                'feature': 'cust_tx_count_1d',
+                'strength': strength,
+                'title': '📈 Extreme Frequency',
+                'description': f"{daily_tx} transactions today - extremely high activity",
+                'risk_level': 'CRITICAL',
+                'context': f"Customer made {daily_tx} transactions in one day"
+            })
+        elif daily_tx > feature_stats.get('cust_tx_count_1d', {}).get('q75', 4):
+            strength = min(0.6, daily_tx / 8)
+            justifications.append({
+                'category': 'HIGH_FREQUENCY',
+                'feature': 'cust_tx_count_1d',
+                'strength': strength,
+                'title': '📈 High Frequency',
+                'description': f"{daily_tx} transactions today - elevated activity",
+                'risk_level': 'HIGH',
+                'context': f"Unusually high daily transaction count: {daily_tx}"
+            })
+        
+        # 3. BEHAVIORAL ANOMALY DETECTION
+        amount_over_median = record_data.get('amount_over_cust_median_7d', 0)
+        if amount_over_median > 10:
+            strength = min(0.95, amount_over_median / 20)
+            justifications.append({
+                'category': 'MAJOR_BEHAVIOR_CHANGE',
+                'feature': 'amount_over_cust_median_7d',
+                'strength': strength,
+                'title': '📊 Major Behavioral Anomaly',
+                'description': f"Amount {amount_over_median:.1f}x above customer's normal spending",
+                'risk_level': 'CRITICAL',
+                'context': "Massive deviation from customer's typical behavior"
+            })
+        elif amount_over_median > 5:
+            strength = min(0.8, amount_over_median / 10)
+            justifications.append({
+                'category': 'BEHAVIORAL_ANOMALY',
+                'feature': 'amount_over_cust_median_7d',
+                'strength': strength,
+                'title': '📊 Behavioral Anomaly',
+                'description': f"Amount {amount_over_median:.1f}x above normal spending",
+                'risk_level': 'HIGH',
+                'context': "Significant deviation from customer's pattern"
+            })
+        elif amount_over_median > 2:
+            justifications.append({
+                'category': 'SPENDING_CHANGE',
+                'feature': 'amount_over_cust_median_7d',
+                'strength': 0.5,
+                'title': '📊 Spending Pattern Change',
+                'description': f"Amount {amount_over_median:.1f}x above 7-day median",
+                'risk_level': 'MEDIUM',
+                'context': "Different from customer's usual spending"
+            })
+        
+        # 4. TRANSACTION TIMING ANALYSIS
+        time_since_last = record_data.get('time_since_last_pair_tx', -1)
+        if 0 <= time_since_last < 1.0:
+            justifications.append({
+                'category': 'EXTREMELY_RAPID',
+                'feature': 'time_since_last_pair_tx',
+                'strength': 0.9,
+                'title': '⚡ Extremely Rapid Repeat',
+                'description': f"Repeat transaction within {time_since_last:.1f} time units",
+                'risk_level': 'CRITICAL',
+                'context': "Extremely quick repeat with same merchant"
+            })
+        elif 0 <= time_since_last < 5.0:
+            strength = 0.7 if time_since_last < 2.0 else 0.5
+            justifications.append({
+                'category': 'RAPID_REPEAT',
+                'feature': 'time_since_last_pair_tx',
+                'strength': strength,
+                'title': '⚡ Rapid Repeat',
+                'description': f"Repeat within {time_since_last:.1f} time units",
+                'risk_level': 'HIGH',
+                'context': "Quick repeat transaction pattern detected"
+            })
+        
+        # 5. CATEGORY-SPECIFIC RISK
         category = record_data.get('category', '')
-        if category:
+        category_strength = {
+            'es_sportsandtoys': 0.8, 'es_health': 0.7, 'es_wellnessandbeauty': 0.7,
+            'es_fashion': 0.6, 'es_travel': 0.6, 'es_home': 0.5,
+            'es_leisure': 0.5, 'es_otherservices': 0.4,
+            'es_transportation': 0.3, 'es_food': 0.2, 'es_barsandrestaurants': 0.2
+        }
+        if category in category_strength:
             justifications.append({
-                'category': 'CATEGORY_PRESENT', 'feature': 'category', 'strength': 0.15,
-                'title': '📋 Transaction Category', 'description': f"Category: {category}",
-                'risk_level': 'LOW', 'context': f"Transaction in {category} category"
+                'category': 'CATEGORY_RISK',
+                'feature': 'category',
+                'strength': category_strength[category],
+                'title': '🎯 Category Risk',
+                'description': f"Transaction in {category} category",
+                'risk_level': 'HIGH' if category_strength[category] > 0.6 else 'MEDIUM',
+                'context': f"This category has specific fraud patterns"
             })
         
-        # 4. CUSTOMER ACTIVITY
-        customer = record_data.get('customer', '')
-        if customer:
+        # 6. RELATIONSHIP RISK
+        if record_data.get('first_time_pair', 0) == 1:
             justifications.append({
-                'category': 'CUSTOMER_ACTIVITY', 'feature': 'customer', 'strength': 0.1,
-                'title': '👤 Customer Transaction', 'description': f"Customer: {customer}",
-                'risk_level': 'LOW', 'context': "Customer transaction activity"
+                'category': 'NEW_RELATIONSHIP',
+                'feature': 'first_time_pair',
+                'strength': 0.6,
+                'title': '🆕 First-Time Merchant',
+                'description': "First transaction with this merchant",
+                'risk_level': 'MEDIUM',
+                'context': "New customer-merchant relationship"
             })
         
-        # ENHANCE EVERY SINGLE ALERT
+        # 7. CUSTOMER HISTORY ANALYSIS
+        unique_merchants = record_data.get('cust_unique_merchants_30d', 0)
+        if unique_merchants > 20:
+            justifications.append({
+                'category': 'BROAD_MERCHANT_USAGE',
+                'feature': 'cust_unique_merchants_30d',
+                'strength': 0.5,
+                'title': '🏪 Diverse Merchant Usage',
+                'description': f"Used {unique_merchants} different merchants recently",
+                'risk_level': 'MEDIUM',
+                'context': "Customer transacts with many different merchants"
+            })
+        
+        # ENHANCE ALERT WITH UNIQUE JUSTIFICATIONS
         enhanced_alert = alert.copy()
-        enhanced_alert['advanced_justifications'] = justifications
+        
+        # Sort by strength and take top justifications
+        justifications.sort(key=lambda x: x['strength'], reverse=True)
+        enhanced_alert['advanced_justifications'] = justifications[:5]  # Top 5 unique reasons
         enhanced_alert['risk_factors'] = len(justifications)
-        enhanced_alert['confidence_score'] = probability
+        enhanced_alert['primary_risk_factor'] = justifications[0]['category'] if justifications else 'UNKNOWN'
+        
+        # Boost confidence based on strongest justification
+        if justifications:
+            max_strength = max(j['strength'] for j in justifications)
+            confidence_boost = min(0.3, max_strength * 0.4)
+            enhanced_alert['adjusted_confidence'] = min(0.99, probability + confidence_boost)
+        else:
+            enhanced_alert['adjusted_confidence'] = probability
         
         enhanced_alerts.append(enhanced_alert)
     
-    print(f"✅ Enhanced {len(alerts)} → {len(enhanced_alerts)} alerts (KEEPING ALL)")
-    return enhanced_alerts, {}
+    print(f"✅ Enhanced {len(alerts)} alerts with UNIQUE justifications")
     
-    # Calculate recall statistics
+    # Show justification variety
     if enhanced_alerts:
-        fraud_probs = [alert['fraud_probability'] for alert in enhanced_alerts]
-        print(f"📊 Enhanced alerts probability range: {min(fraud_probs):.3f} to {max(fraud_probs):.3f}")
+        justification_counts = {}
+        for alert in enhanced_alerts:
+            for j in alert.get('advanced_justifications', []):
+                cat = j['category']
+                justification_counts[cat] = justification_counts.get(cat, 0) + 1
+        print(f"🎯 Justification variety: {justification_counts}")
     
     return enhanced_alerts, {}
 
@@ -302,8 +456,6 @@ def upload_file():
             
             df = pd.read_csv(filepath)
             print(f"📊 Loaded DataFrame shape: {df.shape}")
-            print(f"🔍 First 3 rows:\n{df.head(3)}")
-            print(f"📋 Columns: {list(df.columns)}")
             
             # Check if fraud column exists
             has_fraud_column = 'fraud' in df.columns
@@ -338,23 +490,8 @@ def upload_file():
             
             print(f"🔍 DEBUG: Got {len(alerts)} alerts and {len(predictions)} predictions")
             
-            # FORCE SOME ALERTS IF NONE FOUND
-            if len(alerts) == 0 and len(predictions) > 0:
-                print("🚨 NO ALERTS GENERATED - CREATING MANUAL ALERTS FOR DEBUGGING")
-                # Create alerts for top 10 probabilities regardless of threshold
-                sorted_predictions = sorted(predictions, key=lambda x: x['fraud_probability'], reverse=True)
-                for i, pred in enumerate(sorted_predictions[:10]):
-                    alerts.append({
-                        'record_id': pred['record_id'],
-                        'fraud_probability': pred['fraud_probability'],
-                        'raw_data': df.iloc[pred['record_id']].to_dict(),
-                        'risk_level': 'DEBUG',
-                        'customer_id': str(df.iloc[pred['record_id']].get('customer', 'Unknown')),
-                        'merchant_id': str(df.iloc[pred['record_id']].get('merchant', 'Unknown')),
-                        'step': str(df.iloc[pred['record_id']].get('step', 'Unknown'))
-                    })
-            
-            enhanced_alerts, stats = create_ultra_aggressive_justifications(df, alerts)
+            # Create individualized justifications
+            enhanced_alerts, stats = create_individualized_justifications(df, alerts)
             
             # Calculate metrics
             y_true = [pred['actual_fraud'] for pred in predictions] if predictions else []
@@ -374,7 +511,8 @@ def upload_file():
             # Format alerts for frontend
             alerts_data = []
             for alert in enhanced_alerts[:50]:
-                confidence_decimal = float(alert['fraud_probability'])
+                # Use adjusted confidence if available
+                confidence_decimal = float(alert.get('adjusted_confidence', alert['fraud_probability']))
                 
                 alert_data = {
                     'record_id': int(alert['record_id']),
@@ -384,7 +522,8 @@ def upload_file():
                     'customer_id': alert['raw_data'].get('customer', 'Unknown'),
                     'merchant_id': alert['raw_data'].get('merchant', 'Unknown'),
                     'step': str(alert['raw_data'].get('step', 'Unknown')),
-                    'risk_factors': f"{alert['risk_factors']} risk factors detected",
+                    'risk_factors': f"{alert['risk_factors']} unique risk factors",
+                    'primary_risk': alert.get('primary_risk_factor', 'Multiple Factors'),
                     'justifications': [
                         {
                             'title': j.get('title', 'Risk Factor'),
@@ -437,7 +576,3 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     print(f"✅ Server ready on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
-
-
-
-
