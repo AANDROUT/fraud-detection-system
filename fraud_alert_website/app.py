@@ -636,15 +636,15 @@ def upload_file():
     
     return jsonify({'success': False, 'error': 'Invalid file type'})
 
-if __name__ == '__main__':
-    print("🚀 Starting Apex Fraud Studio...")
-    load_model()
-    
-    if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        os.makedirs(app.config['UPLOAD_FOLDER'])
-    
-    # Render-specific port binding
-    port = int(os.environ.get("PORT", 10000))
-    print(f"✅ Server ready on port {port}")
-    app.run(host='0.0.0.0', port=port)
+print("🚀 Starting Apex Fraud Studio...")
+load_model()
+
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
+
+# Render-specific port binding
+port = int(os.environ.get("PORT", 10000))
+print(f"✅ Server ready on port {port}")
+app.run(host='0.0.0.0', port=port)
+
 
