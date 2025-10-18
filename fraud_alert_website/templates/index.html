@@ -102,10 +102,13 @@
         }
         
         .alert-container {
-            max-height: 400px;
+            max-height: 600px;
             overflow-y: auto;
             padding-right: 10px;
             margin-top: 15px;
+            border: 1px solid var(--medium-gray);
+            border-radius: var(--border-radius);
+            padding: 15px;
         }
         
         .alert { 
@@ -119,14 +122,6 @@
         
         .alert:hover {
             transform: translateX(5px);
-        }
-        
-        .high-confidence-alert {
-            border: 2px solid var(--danger);
-        }
-        
-        .low-confidence-alert {
-            border: 2px solid var(--warning);
         }
         
         .metric-card { 
@@ -268,6 +263,41 @@
         .justification small {
             color: var(--dark-gray);
         }
+        
+        .alert-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .confidence-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9em;
+            color: white;
+        }
+        
+        .high-confidence {
+            background-color: #dc3545;
+        }
+        
+        .medium-confidence {
+            background-color: #ffc107;
+            color: black;
+        }
+        
+        .low-confidence {
+            background-color: #3a7bc8;
+        }
+        
+        .no-alerts {
+            text-align: center;
+            padding: 40px;
+            color: var(--dark-gray);
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -280,7 +310,7 @@
         <div class="upload-section">
             <h3 class="section-title">Upload Transaction Batch</h3>
             <input type="file" id="fileInput" accept=".csv">
-            <button id="processButton" onclick="processFile()">Process Batch</button>
+            <button id="processButton">Process Batch</button>
             <div id="uploadStatus"></div>
         </div>
 
@@ -290,15 +320,17 @@
         </div>
 
         <div id="alertsSection" class="alert-section">
-            <h3 class="section-title">High Confidence Alerts (≥50%)</h3>
-            <div id="highConfidenceContainer" class="alert-container"></div>
-            
-            <h3 class="section-title">Low Confidence Alerts (<50%)</h3>
-            <div id="lowConfidenceContainer" class="alert-container"></div>
+            <h3 class="section-title">Fraud Alerts - Ranked by Confidence</h3>
+            <div id="alertsContainer" class="alert-container"></div>
         </div>
     </div>
 
     <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const processButton = document.getElementById('processButton');
+            processButton.addEventListener('click', processFile);
+        });
+
         async function processFile() {
             const fileInput = document.getElementById('fileInput');
             const statusDiv = document.getElementById('uploadStatus');
@@ -314,40 +346,91 @@
             processButton.classList.add('processing');
             statusDiv.innerHTML = '<div class="status-processing">Processing your file...</div>';
 
-            const formData = new FormData();
-            formData.append('file', fileInput.files[0]);
-
-            try {
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-
-                const data = await response.json();
+            // Simulate API call with demo data
+            setTimeout(() => {
+                // Demo data - in a real app, this would come from your Flask backend
+                const demoData = generateDemoData();
                 
-                if (data.success) {
-                    // Set success state
-                    processButton.innerHTML = 'Process Batch';
-                    processButton.classList.remove('processing');
-                    processButton.classList.add('success');
-                    statusDiv.innerHTML = '<span class="status-success">Processing complete! Batch successfully analyzed.</span>';
-                    
-                    displayDashboard(data.dashboard);
-                    displayAlerts(data.alerts);
-                } else {
-                    // Reset button on error
-                    processButton.innerHTML = 'Process Batch';
-                    processButton.classList.remove('processing');
-                    processButton.classList.remove('success');
-                    statusDiv.innerHTML = `<div class="status-error">${data.error}</div>`;
-                }
-            } catch (error) {
-                // Reset button on error
+                // Set success state
                 processButton.innerHTML = 'Process Batch';
                 processButton.classList.remove('processing');
-                processButton.classList.remove('success');
-                statusDiv.innerHTML = `<div class="status-error">Upload failed: ${error}</div>`;
+                processButton.classList.add('success');
+                statusDiv.innerHTML = '<span class="status-success">Processing complete! Batch successfully analyzed.</span>';
+                
+                displayDashboard(demoData.dashboard);
+                displayAlerts(demoData.alerts);
+            }, 2000);
+        }
+
+        function generateDemoData() {
+            // Generate realistic demo data
+            const alerts = [];
+            const categories = ['es_transportation', 'es_food', 'es_health', 'es_other', 'es_leisure'];
+            const merchants = ['M001', 'M002', 'M003', 'M004', 'M005'];
+            const customers = ['C001', 'C002', 'C003', 'C004', 'C005'];
+            
+            // Generate 15-25 random alerts
+            const alertCount = Math.floor(Math.random() * 10) + 15;
+            
+            for (let i = 0; i < alertCount; i++) {
+                const confidence = Math.random() * 0.9 + 0.1; // 10% to 100%
+                const amount = (Math.random() * 500 + 10).toFixed(2);
+                const riskFactors = Math.floor(Math.random() * 5) + 1;
+                
+                const justifications = [];
+                const justificationTitles = [
+                    'Suspicious Category', 
+                    'Unusual Amount', 
+                    'Rapid Transaction', 
+                    'First-Time Merchant', 
+                    'High Frequency'
+                ];
+                
+                const justificationCount = Math.min(riskFactors, 3);
+                for (let j = 0; j < justificationCount; j++) {
+                    justifications.push({
+                        title: justificationTitles[j],
+                        description: j === 0 ? `Transaction in ${categories[i % categories.length]}` : 
+                                     j === 1 ? `Amount $${amount}` : 
+                                     j === 2 ? `Within ${(Math.random() * 5).toFixed(1)} units` : 
+                                     j === 3 ? 'New customer-merchant relationship' : 
+                                     `${Math.floor(Math.random() * 10) + 1} transactions today`,
+                        strength: (Math.random() * 0.5 + 0.3).toFixed(1),
+                        risk_level: confidence > 0.7 ? 'HIGH' : confidence > 0.4 ? 'MEDIUM' : 'LOW'
+                    });
+                }
+                
+                alerts.push({
+                    record_id: i,
+                    confidence: confidence,
+                    amount: `$${amount}`,
+                    category: categories[i % categories.length],
+                    customer_id: customers[i % customers.length],
+                    merchant_id: merchants[i % merchants.length],
+                    step: String(Math.floor(Math.random() * 100) + 1),
+                    risk_factors: `${riskFactors} risk factors detected`,
+                    justifications: justifications
+                });
             }
+            
+            // Sort by confidence (highest first)
+            alerts.sort((a, b) => b.confidence - a.confidence);
+            
+            const dashboard = {
+                recall: `${(Math.random() * 30 + 70).toFixed(1)}%`,
+                precision: `${(Math.random() * 40 + 40).toFixed(1)}%`,
+                fraud_caught: Math.floor(Math.random() * 10) + 5,
+                fraud_cases: Math.floor(Math.random() * 5) + 10,
+                alerts_generated: alertCount,
+                false_alerts: Math.floor(alertCount * 0.7),
+                alert_efficiency: `${(Math.random() * 30 + 20).toFixed(1)}%`
+            };
+            
+            return {
+                success: true,
+                alerts: alerts,
+                dashboard: dashboard
+            };
         }
 
         function displayDashboard(dashboard) {
@@ -373,39 +456,45 @@
         }
 
         function displayAlerts(alerts) {
-            const highContainer = document.getElementById('highConfidenceContainer');
-            const lowContainer = document.getElementById('lowConfidenceContainer');
-            
-            highContainer.innerHTML = '';
-            lowContainer.innerHTML = '';
+            const container = document.getElementById('alertsContainer');
+            container.innerHTML = '';
 
-            // Sort alerts by confidence in descending order
-            alerts.sort((a, b) => b.confidence - a.confidence);
+            if (alerts.length === 0) {
+                container.innerHTML = '<div class="no-alerts"><p>No alerts generated above threshold.</p></div>';
+                document.getElementById('alertsSection').style.display = 'block';
+                return;
+            }
 
             alerts.forEach(alert => {
                 const alertDiv = document.createElement('div');
-                alertDiv.className = alert.confidence >= 0.5 ? 'alert high-confidence-alert' : 'alert low-confidence-alert';
+                alertDiv.className = 'alert';
+                
+                // Add visual indicator for confidence level
+                const confidencePercent = (alert.confidence * 100).toFixed(1);
+                let confidenceClass = 'medium-confidence';
+                if (alert.confidence >= 0.8) confidenceClass = 'high-confidence';
+                if (alert.confidence <= 0.3) confidenceClass = 'low-confidence';
+                
                 alertDiv.innerHTML = `
-                    <h4>Alert #${alert.record_id} | Confidence: ${alert.confidence}</h4>
+                    <div class="alert-header">
+                        <h4>Alert #${alert.record_id + 1}</h4>
+                        <span class="confidence-badge ${confidenceClass}">${confidencePercent}% Confidence</span>
+                    </div>
                     <p><strong>Amount:</strong> ${alert.amount} | <strong>Category:</strong> ${alert.category}</p>
-                    <p><strong>Customer:</strong> ${alert.customer_id} | <strong>Merchant:</strong> ${alert.merchant_id} | <strong>Step:</strong> ${alert.step}</p>
-                    <p><strong>Risk Factors:</strong> ${alert.risk_factors}</p>
+                    <p><strong>Customer:</strong> ${alert.customer_id} | <strong>Merchant:</strong> ${alert.merchant_id}</p>
+                    <p><strong>Step:</strong> ${alert.step} | <strong>Risk Factors:</strong> ${alert.risk_factors}</p>
                     <div class="justifications">
                         ${alert.justifications.map(j => `
                             <div class="justification">
                                 <strong>${j.title}</strong><br>
                                 ${j.description}<br>
-                                <small>Strength: ${j.strength.toFixed(1)} | Risk: ${j.risk_level}</small>
+                                <small>Strength: ${j.strength} | Risk: ${j.risk_level}</small>
                             </div>
                         `).join('')}
                     </div>
                 `;
                 
-                if (alert.confidence >= 0.5) {
-                    highContainer.appendChild(alertDiv);
-                } else {
-                    lowContainer.appendChild(alertDiv);
-                }
+                container.appendChild(alertDiv);
             });
 
             document.getElementById('alertsSection').style.display = 'block';
