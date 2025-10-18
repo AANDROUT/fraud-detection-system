@@ -125,38 +125,29 @@ def get_xgboost_predictions(test_df):
         load_model()
     
     print(f"🔍 Processing {len(test_df)} records with XGBoost...")
-    print(f"📋 Test DataFrame columns: {list(test_df.columns)}")
-    print(f"📊 First row sample: {test_df.iloc[0].to_dict()}")
     
     try:
-        # Prepare the test data - MAKE SURE WE DROP FRAUD COLUMN IF PRESENT
+        # Prepare the test data
         X_test = test_df.copy()
         if 'fraud' in X_test.columns:
             X_test = X_test.drop(columns=['fraud'])
             print("✅ Dropped 'fraud' column from features")
         
-        print(f"📊 X_test shape before encoding: {X_test.shape}")
+        print(f"📊 X_test shape: {X_test.shape}")
+        print(f"🔍 Data types: {X_test.dtypes}")
         
-        # Handle categorical encoding
+        # CRITICAL FIX: Skip encoding - assume data is already preprocessed like training data
+        # The batch data should already have the same encoding as training data
         for col in X_test.columns:
-            if col in label_encoders:
-                print(f"🔧 Encoding column: {col}")
-                X_test[col] = X_test[col].astype(str)
-                # Map unseen values to 'unknown'
-                trained_vals = set(label_encoders[col].classes_)
-                unseen_count = len(X_test[~X_test[col].isin(trained_vals)])
-                if unseen_count > 0:
-                    print(f"⚠️  Mapping {unseen_count} unseen values in {col} to 'unknown'")
-                X_test.loc[~X_test[col].isin(trained_vals), col] = 'unknown'
-                X_test[col] = label_encoders[col].transform(X_test[col])
+            if X_test[col].dtype == 'object':
+                print(f"⚠️  WARNING: Column {col} is still object type - should be numeric")
+                # Convert to numeric if possible, otherwise we have a problem
+                X_test[col] = pd.to_numeric(X_test[col], errors='coerce').fillna(0)
         
-        print(f"📊 X_test shape after encoding: {X_test.shape}")
-        
-        # CRITICAL FIX: Ensure all training columns are present
+        # Ensure all training columns are present
         if hasattr(model, 'get_booster'):
             expected_features = model.get_booster().feature_names
-            print(f"🎯 Model expects {len(expected_features)} features: {expected_features}")
-            print(f"📋 Test data has {len(X_test.columns)} features: {list(X_test.columns)}")
+            print(f"🎯 Model expects {len(expected_features)} features")
             
             missing_cols = set(expected_features) - set(X_test.columns)
             extra_cols = set(X_test.columns) - set(expected_features)
@@ -169,24 +160,22 @@ def get_xgboost_predictions(test_df):
                 X_test[col] = 0
                 print(f"➕ Added missing column: {col}")
             
-            # Remove extra columns that model doesn't expect
+            # Remove extra columns
             for col in extra_cols:
                 if col in X_test.columns:
                     X_test = X_test.drop(columns=[col])
                     print(f"➖ Removed extra column: {col}")
             
-            # Reorder columns to match training EXACTLY
+            # Reorder columns to match training
             X_test = X_test[expected_features]
-            print(f"✅ Final X_test shape: {X_test.shape}")
+        
+        print(f"✅ Final X_test shape: {X_test.shape}")
         
         # Get predictions
-        print("🎯 Getting predictions from model...")
         fraud_proba = model.predict_proba(X_test)[:, 1]
         
-        print(f"📊 Prediction probabilities - Min: {fraud_proba.min():.4f}, Max: {fraud_proba.max():.4f}, Mean: {fraud_proba.mean():.4f}")
-        print(f"📈 Probabilities above 0.1: {np.sum(fraud_proba > 0.1)}/{len(fraud_proba)}")
-        print(f"📈 Probabilities above 0.05: {np.sum(fraud_proba > 0.05)}/{len(fraud_proba)}")
-        print(f"📈 Probabilities above 0.01: {np.sum(fraud_proba > 0.01)}/{len(fraud_proba)}")
+        print(f"📊 Prediction range: {fraud_proba.min():.3f} to {fraud_proba.max():.3f}")
+        print(f"📈 Alerts above 0.1: {np.sum(fraud_proba > 0.1)}")
         
         alerts = []
         all_predictions = []
@@ -199,27 +188,18 @@ def get_xgboost_predictions(test_df):
                 'actual_fraud': test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
             })
             
-            # FORCE ALERTS FOR DEBUGGING - LOWER THRESHOLD TEMPORARILY
-            if prob_float > 0.01:  # Lowered to see ANY alerts
+            if prob_float > 0.1:
                 alerts.append({
                     'record_id': i,
                     'fraud_probability': prob_float,
                     'raw_data': test_df.iloc[i].to_dict(),
-                    'risk_level': 'CRITICAL' if prob_float > 0.7 else 'HIGH' if prob_float > 0.3 else 'MEDIUM' if prob_float > 0.1 else 'LOW',
+                    'risk_level': 'CRITICAL' if prob_float > 0.7 else 'HIGH' if prob_float > 0.3 else 'MEDIUM',
                     'customer_id': str(test_df.iloc[i].get('customer', 'Unknown')),
                     'merchant_id': str(test_df.iloc[i].get('merchant', 'Unknown')),
                     'step': str(test_df.iloc[i].get('step', 'Unknown'))
                 })
         
-        print(f"✅ Generated {len(alerts)} alerts (threshold: 0.01)")
-        
-        # DEBUG: Show top probabilities
-        if fraud_proba.size > 0:
-            top_indices = np.argsort(fraud_proba)[-10:][::-1]  # Top 10 highest probabilities
-            print("🎯 Top 10 probabilities:")
-            for idx in top_indices:
-                print(f"  Record {idx}: {fraud_proba[idx]:.4f}")
-        
+        print(f"✅ Generated {len(alerts)} alerts")
         return alerts, all_predictions
         
     except Exception as e:
@@ -474,4 +454,5 @@ if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     print(f"✅ Server ready on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False)
+
 
