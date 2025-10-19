@@ -13,26 +13,81 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 model = None
 label_encoders = None
 optimal_threshold = None
-original_columns = None  # CRITICAL: Store original column order
+original_columns = None
 
 def load_model():
     """Load the pre-trained XGBoost model"""
     global model, label_encoders, optimal_threshold, original_columns
     
     try:
-        # ALWAYS use pre-trained files - NO TRAINING
         model = joblib.load('fraud_model.pkl')
         label_encoders = joblib.load('label_encoders.pkl')
         optimal_threshold = joblib.load('optimal_threshold.pkl')
-        original_columns = joblib.load('original_columns.pkl')  # Load column order
+        original_columns = joblib.load('original_columns.pkl')
         
         print("✅ Pre-trained model loaded successfully")
         print(f"🎯 Using threshold: {optimal_threshold}")
         print(f"📋 Original columns ({len(original_columns)}): {original_columns}")
+        
     except Exception as e:
         print(f"❌ Error loading pre-trained model: {e}")
-        raise Exception("Pre-trained model files missing. Upload fraud_model.pkl, label_encoders.pkl, optimal_threshold.pkl, original_columns.pkl")
+        raise Exception("Pre-trained model files missing. Run create_model_files.py first")
 
+def clean_uploaded_data(df):
+    """EXACT same cleaning as original dataset preparation"""
+    print("🧹 CLEANING: Starting data cleaning pipeline...")
+    
+    # Create a copy to avoid modifying original
+    df_clean = df.copy()
+    
+    # 1. Handle missing values (same as original: fillna(0))
+    df_clean = df_clean.fillna(0)
+    print("✅ CLEANING: Filled missing values with 0")
+    
+    # 2. Strip quotes from ALL string columns (critical fix for your data)
+    for col in df_clean.columns:
+        if df_clean[col].dtype == 'object':
+            original_sample = str(df_clean[col].iloc[0]) if len(df_clean) > 0 else "N/A"
+            df_clean[col] = df_clean[col].apply(lambda x: str(x).strip("'\"").strip() if pd.notna(x) else x)
+            cleaned_sample = str(df_clean[col].iloc[0]) if len(df_clean) > 0 else "N/A"
+            print(f"✅ CLEANING: Stripped quotes from '{col}': '{original_sample}' -> '{cleaned_sample}'")
+    
+    # 3. Convert specific numeric columns (same as original)
+    numeric_columns = [
+        'amount', 'log_amount', 'cust_tx_count_1d', 'cust_tx_count_7d',
+        'cust_median_amt_7d', 'amount_over_cust_median_7d', 
+        'cust_unique_merchants_30d', 'first_time_pair', 
+        'time_since_last_pair_tx', 'mch_tx_count_1d', 'mch_unique_customers_7d'
+    ]
+    
+    for col in numeric_columns:
+        if col in df_clean.columns:
+            original_dtype = df_clean[col].dtype
+            df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce').fillna(0)
+            print(f"✅ CLEANING: Converted '{col}' from {original_dtype} to {df_clean[col].dtype}")
+    
+    # 4. Handle specific column transformations (same as original)
+    if 'time_since_last_pair_tx' in df_clean.columns:
+        # Replace NaN with -1 (indicating no previous transaction)
+        df_clean['time_since_last_pair_tx'] = df_clean['time_since_last_pair_tx'].replace([np.nan, np.inf, -np.inf], -1)
+        print("✅ CLEANING: Handled time_since_last_pair_tx NaN values")
+    
+    # 5. Ensure all expected columns are present
+    missing_in_upload = set(original_columns) - set(df_clean.columns)
+    if missing_in_upload:
+        print(f"❌ CLEANING: Missing columns in upload: {missing_in_upload}")
+        raise ValueError(f"Missing required columns: {missing_in_upload}")
+    
+    # 6. Remove any extra columns not in original training data
+    extra_cols = set(df_clean.columns) - set(original_columns)
+    if extra_cols:
+        print(f"⚠️ CLEANING: Dropping extra columns: {extra_cols}")
+        df_clean = df_clean[original_columns]
+    
+    print(f"✅ CLEANING: Final cleaned shape: {df_clean.shape}")
+    print(f"✅ CLEANING: Final columns: {list(df_clean.columns)}")
+    
+    return df_clean
 def get_xgboost_predictions(test_df):
     """Get predictions from XGBoost model with PROPER encoding"""
     global model, label_encoders, optimal_threshold, original_columns
@@ -557,4 +612,5 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 port = int(os.environ.get("PORT", 10000))
 print(f"✅ Server ready on port {port}")
 app.run(host='0.0.0.0', port=port)
+
 
