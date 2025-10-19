@@ -5,6 +5,7 @@ import os
 import joblib
 from werkzeug.utils import secure_filename
 import traceback # Import necessary module
+from sklearn.metrics import recall_score, precision_score, confusion_matrix
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads/'
@@ -48,12 +49,12 @@ def get_xgboost_predictions(test_df):
     try:
         # Prepare the test data
         X_test = test_df.copy()
-        if 'fraud' in X_test.columns:
+        has_fraud_column = 'fraud' in X_test.columns
+        if has_fraud_column:
             X_test = X_test.drop(columns=['fraud'])
             print("✅ Dropped 'fraud' column from features")
         
         print(f"📊 X_test shape before encoding: {X_test.shape}")
-        print(f"🔍 Data types: {X_test.dtypes}")
         
         # CRITICAL: Ensure EXACT same column order as training
         missing_cols = set(original_columns) - set(X_test.columns)
@@ -68,77 +69,49 @@ def get_xgboost_predictions(test_df):
         # CRITICAL FIX: Use EXACT same encoding as training
         for col in X_test.columns:
             if col in label_encoders:
-                print(f"🔧 Properly encoding column: {col}")
                 # Convert to string and use the trained LabelEncoder
                 X_test[col] = X_test[col].astype(str)
                 
                 # Handle unseen categories by mapping them to most common class
                 unseen_mask = ~X_test[col].isin(label_encoders[col].classes_)
                 if unseen_mask.any():
-                    print(f"⚠️  Mapping {unseen_mask.sum()} unseen values in {col} to default")
                     # Map unseen values to the first class (usually most common)
                     X_test.loc[unseen_mask, col] = label_encoders[col].classes_[0]
                 
                 X_test[col] = label_encoders[col].transform(X_test[col])
         
-        print(f"📊 X_test shape after encoding: {X_test.shape}")
-        
-        # Ensure all training columns are present (double check)
+        # Final reordering to match model feature names
         if hasattr(model, 'get_booster'):
             expected_features = model.get_booster().feature_names
-            X_test = X_test[expected_features]  # Final reordering
+            X_test = X_test[expected_features]
         
-        # Get predictions with optimal threshold
+        # Get predictions
         fraud_proba = model.predict_proba(X_test)[:, 1]
         threshold = optimal_threshold
-        
-        print(f"🔍 PREDICTION DEBUG:")
-        print(f"    Probability range: {fraud_proba.min():.6f} to {fraud_proba.max():.6f}")
-        print(f"    Mean probability: {fraud_proba.mean():.6f}")
-        print(f"    Threshold: {threshold}")
-        print(f"    Alerts above threshold: {np.sum(fraud_proba > threshold)}")
-        
-        # Check how many are above different threshold levels
-        for t in [0.0001, 0.001, 0.01, 0.1, 0.5]:
-            above_t = np.sum(fraud_proba > t)
-            print(f"    Above {t}: {above_t} records ({above_t/len(fraud_proba):.1%})")
         
         alerts = []
         all_predictions = []
 
-        # After getting predictions, add:
-        print(f"🔍 PROBABILITY ANALYSIS:")
-        print(f"    Min: {fraud_proba.min():.4f}")
-        print(f"    Max: {fraud_proba.max():.4f}") 
-        print(f"    Mean: {fraud_proba.mean():.4f}")
-        print(f"    % > 0.9: {np.mean(fraud_proba > 0.9):.2%}")
-        print(f"    % > 0.5: {np.mean(fraud_proba > 0.5):.2%}")
-        print(f"    % > 0.1: {np.mean(fraud_proba > 0.1):.2%}")
-        print(f"    % > threshold ({threshold}): {np.mean(fraud_proba > threshold):.2%}")
-
-        # === ADD DEBUG CODE HERE ===
-        print(f"🔍 DEBUG: About to check threshold {threshold}")
-        print(f"🔍 Sample probabilities: {fraud_proba[:10]}")  # First 10 probabilities
-
         for i, prob in enumerate(fraud_proba):
             prob_float = float(prob)
+            
+            # Record all predictions for dashboard metrics
             all_predictions.append({
                 'record_id': i,
                 'fraud_probability': prob_float,
-                'actual_fraud': test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
+                'actual_fraud': test_df.iloc[i]['fraud'] if has_fraud_column else 0
             })
-            
-            # DEBUG: Show what's happening with fraud cases
-            if 'fraud' in test_df.columns and test_df.iloc[i]['fraud'] == 1:
-                print(f"🔍 FRAUD CASE {i}: probability = {prob_float:.4f}, above threshold? {prob_float > threshold}")
             
             # Use the OPTIMAL threshold from training
             if prob_float > threshold:
                 alerts.append({
                     'record_id': i,
-                    'fraud_probability': prob_float,
+                    'fraud_probability': prob_float, # <--- FIX 1: Use 'fraud_probability' for confidence
                     'raw_data': test_df.iloc[i].to_dict(),
                     'risk_level': 'CRITICAL' if prob_float > 0.8 else 'HIGH' if prob_float > 0.5 else 'MEDIUM' if prob_float > 0.2 else 'LOW',
+                    # Include the fields the HTML uses directly
+                    'amount': f"${test_df.iloc[i].get('amount', 0.0):,.2f}", 
+                    'category': str(test_df.iloc[i].get('category', 'Unknown')),
                     'customer_id': str(test_df.iloc[i].get('customer', 'Unknown')),
                     'merchant_id': str(test_df.iloc[i].get('merchant', 'Unknown')),
                     'step': str(test_df.iloc[i].get('step', 'Unknown'))
@@ -272,7 +245,7 @@ def create_individualized_justifications(df, alerts):
         
         # 4. TRANSACTION TIMING ANALYSIS (1 step = 1 day)
         time_since_last = record_data.get('time_since_last_pair_tx', -1)
-        if 0 <= time_since_last < 0.1:  # Same day repeat (very rapid)
+        if 0 <= time_since_last < 0.1: # Same day repeat (very rapid)
             justifications.append({
                 'category': 'SAME_DAY_REPEAT',
                 'feature': 'time_since_last_pair_tx',
@@ -282,7 +255,7 @@ def create_individualized_justifications(df, alerts):
                 'risk_level': 'CRITICAL',
                 'context': "Extremely quick repeat transaction with same merchant on same day"
             })
-        elif 0 <= time_since_last < 1.0:  # Within 1 day
+        elif 0 <= time_since_last < 1.0: # Within 1 day
             strength = 0.8 if time_since_last < 0.5 else 0.6
             justifications.append({
                 'category': 'RAPID_REPEAT',
@@ -293,7 +266,7 @@ def create_individualized_justifications(df, alerts):
                 'risk_level': 'HIGH',
                 'context': "Quick repeat transaction pattern with same merchant"
             })
-        elif 0 <= time_since_last < 3.0:  # Within 3 days
+        elif 0 <= time_since_last < 3.0: # Within 3 days
             justifications.append({
                 'category': 'RECENT_REPEAT',
                 'feature': 'time_since_last_pair_tx',
@@ -353,177 +326,194 @@ def create_individualized_justifications(df, alerts):
         
         # Sort by strength and take top justifications
         justifications.sort(key=lambda x: x['strength'], reverse=True)
-        enhanced_alert['advanced_justifications'] = justifications[:5]
+        # --- FIX 2: Use 'advanced_justifications' which the HTML expects
+        enhanced_alert['advanced_justifications'] = justifications[:5] 
+        # --- FIX 3: Include the simple 'risk_factors' count (for display on HTML)
         enhanced_alert['risk_factors'] = len(justifications)
-        enhanced_alert['primary_risk_factor'] = justifications[0]['category'] if justifications else 'UNKNOWN'
-        
-        # CRITICAL FIX: Don't adjust confidence - this affects precision/recall
-        # Justifications are for display only, don't change the actual prediction
-        enhanced_alert['adjusted_confidence'] = probability  # Keep original probability
         
         enhanced_alerts.append(enhanced_alert)
     
     print(f"Enhanced {len(alerts)} alerts with UNIQUE justifications")
-    return enhanced_alerts, {} # Return enhanced alerts and an empty dictionary (for dashboard logic consistency)
+    return enhanced_alerts
+
+def calculate_dashboard_metrics(all_predictions):
+    """Calculates precision, recall, and TP/FP/TN/FN counts"""
+    global optimal_threshold
+
+    if not all_predictions:
+        return {
+            'recall': 'N/A', 'fraud_caught': 0, 'fraud_cases': 0,
+            'precision': 'N/A', 'total_alerts': 0, 'false_positives': 0
+        }
+
+    # Convert predictions to a DataFrame for easy calculation
+    df_preds = pd.DataFrame(all_predictions)
+    
+    # Calculate binary prediction based on optimal threshold
+    df_preds['prediction'] = (df_preds['fraud_probability'] > optimal_threshold).astype(int)
+    
+    # Filter for cases where 'actual_fraud' column exists (i.e., we have ground truth)
+    if 'actual_fraud' not in df_preds.columns:
+        # If no ground truth, we can only report alert counts
+        alerts_generated = df_preds['prediction'].sum()
+        
+        # --- FIX 4: Use correct keys for the dashboard JSON
+        return {
+            'recall': 'N/A', 
+            'fraud_caught': 'N/A', 
+            'fraud_cases': 'N/A',
+            'precision': 'N/A', 
+            'total_alerts': int(alerts_generated),
+            'false_positives': 'N/A'
+        }
+
+    # Calculate metrics (only runs if 'actual_fraud' exists)
+    y_true = df_preds['actual_fraud']
+    y_pred = df_preds['prediction']
+
+    # Handle case where all true or all predicted are zero to avoid division by zero errors
+    recall = recall_score(y_true, y_pred, zero_division=0)
+    precision = precision_score(y_true, y_pred, zero_division=0)
+    
+    tn, fp, fn, tp = confusion_matrix(y_true, y_pred).ravel()
+
+    # --- FIX 4: Use correct keys for the dashboard JSON
+    dashboard_data = {
+        'recall': f"{recall * 100:.2f}%",         # Matches JS: dashboard.recall
+        'fraud_caught': int(tp),                  # Matches JS: dashboard.fraud_caught
+        'fraud_cases': int(tp + fn),              # Matches JS: dashboard.fraud_cases
+        'precision': f"{precision * 100:.2f}%",   # Matches JS: dashboard.precision
+        'total_alerts': int(tp + fp),             # Matches JS: dashboard.alerts_generated (fixed key in HTML)
+        'false_positives': int(fp)                # Matches JS: dashboard.false_alerts (fixed key in HTML)
+    }
+
+    print(f"📊 Dashboard Metrics: Recall={dashboard_data['recall']}, Precision={dashboard_data['precision']}")
+    print(f"📊 TP={tp}, FP={fp}, FN={fn}, TN={tn}")
+    return dashboard_data
+
 
 def validate_uploaded_data(df):
     """Check if uploaded data has the required columns"""
     required_columns = [
         'step', 'customer', 'age', 'gender', 'merchant', 'category', 'amount',
-        'log_amount', 'cust_tx_count_1d', 'cust_tx_count_7d', 'cust_median_amt_7d',
-        'amount_over_cust_median_7d', 'cust_unique_merchants_30d', 'first_time_pair',
-        'time_since_last_pair_tx', 'mch_tx_count_1d', 'mch_unique_customers_7d'
+        'cust_tx_count_1d', 'amount_over_cust_median_7d', 'time_since_last_pair_tx', 
+        'first_time_pair'
     ]
     
-    missing_columns = [col for col in required_columns if col not in df.columns]
-    extra_columns = [col for col in df.columns if col not in required_columns]
-    
-    print(f"📊 Uploaded file columns: {list(df.columns)}")
-    print(f"❌ Missing columns: {missing_columns}")
-    print(f"📈 Extra columns: {extra_columns}")
-    
-    return missing_columns, extra_columns
+    # Optional 'fraud' column for metric calculation (it's often in uploaded data for testing)
+    required_columns_plus_optional = required_columns + ['fraud']
+
+    missing_cols = [col for col in required_columns_plus_optional if col not in df.columns]
+
+    if len(missing_cols) > 2: # Allow missing 'fraud' and maybe one other feature if you are testing a live stream
+        # Check if the missing columns are all "non-essential" features (i.e. those not in the initial required list)
+        non_essential_missing = [col for col in missing_cols if col not in required_columns]
+        if len(missing_cols) - len(non_essential_missing) > 0:
+             return False, f"Missing essential columns: {', '.join(set(required_columns) - set(df.columns))}"
+
+    return True, ""
+
+
+# --- FLASK ROUTES ---
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    """Renders the main HTML page."""
+    try:
+        load_model() # Attempt to load model on startup
+        return render_template('index.html')
+    except Exception as e:
+        return f"Model Error: {e}", 500
+
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    print("🔄 UPLOAD ROUTE CALLED - STARTING PROCESSING")
-    
+    """Handles the file upload, prediction, and returns the dashboard/alerts data."""
     if 'file' not in request.files:
-        print("❌ No file in request")
-        return jsonify({'success': False, 'error': 'No file uploaded'})
+        return jsonify({'success': False, 'error': 'No file part'}), 400
     
     file = request.files['file']
     if file.filename == '':
-        print("❌ Empty filename")
-        return jsonify({'success': False, 'error': 'No file selected'})
-    
-    print(f"📁 Processing file: {file.filename}")
-    
-    if file and file.filename.endswith('.csv'):
+        return jsonify({'success': False, 'error': 'No selected file'}), 400
+
+    if file:
         filename = secure_filename(file.filename)
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         
+        if not os.path.exists(app.config['UPLOAD_FOLDER']):
+            os.makedirs(app.config['UPLOAD_FOLDER'])
+        
+        file.save(filepath)
+        
         try:
-            file.save(filepath)
-            print(f"✅ File saved to: {filepath}")
-            
+            # Read and process the CSV
             df = pd.read_csv(filepath)
-            print(f"📊 Loaded DataFrame shape: {df.shape}")
-            
-            # CRITICAL FIX 1: Fill all NaNs to match training data before any other step
-            # The training script used: df = df.fillna(0)
-            df = df.fillna(0)
-            print("✅ Filled all NaNs/missing values with 0 to match training.")
-            
-            # Check if fraud column exists
-            has_fraud_column = 'fraud' in df.columns
-            print(f"🎯 Fraud column present: {has_fraud_column}")
-            if has_fraud_column:
-                fraud_count = df['fraud'].sum()
-                print(f"🎯 Actual fraud cases in data: {fraud_count}/{len(df)}")
-            
-            # Validate data
-            missing_cols, extra_cols = validate_uploaded_data(df)
-            
-            if missing_cols:
-                print(f"❌ Missing columns: {missing_cols}")
-                error_msg = f"Missing required columns: {missing_cols}"
-                if os.path.exists(filepath):
-                    os.remove(filepath)
-                return jsonify({'success': False, 'error': error_msg})
-            
-            print("✅ All required columns present!")
-            
-            # Data cleaning
-            print("🧹 Cleaning data...")
-            for col in df.columns:
-                if df[col].dtype == 'object':
-                    # CRITICAL FIX 2: DO NOT strip quotes from categorical features
-                    # The LabelEncoder was trained on strings *with* quotes (e.g., 'C1234')
-                    # Stripping them causes every value to be treated as an unseen category.
-                    # df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x) # <-- BUGGED LINE REMOVED
-                    pass # CORRECT: Leave categorical strings (with quotes) as is
-                
-                # Only convert these specific numeric columns
-                if col in ['amount', 'log_amount', 'cust_tx_count_1d', 'cust_tx_count_7d', 
-                           'cust_median_amt_7d', 'amount_over_cust_median_7d', 
-                           'cust_unique_merchants_30d', 'first_time_pair', 
-                           'time_since_last_pair_tx', 'mch_tx_count_1d', 'mch_unique_customers_7d']:
-                    # This line is now primarily for type consistency (e.g., ensuring int-like columns are numeric)
-                    # Use float to ensure consistency with calculated features like log_amount
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(float)
-            
-            # DO NOT convert categorical columns like 'customer', 'merchant', 'category' to numeric here!
-            # Let the LabelEncoder handle them in get_xgboost_predictions
-            
-            df = df.reset_index().rename(columns={'index': 'original_index'})
-            
-            # Use XGBoost for predictions
+            print(f"📂 Read file with {len(df)} records. Columns: {df.columns.tolist()}")
+
+            # 1. Validation
+            is_valid, error_msg = validate_uploaded_data(df)
+            if not is_valid:
+                return jsonify({'success': False, 'error': error_msg}), 400
+
+            # 2. Get Raw Predictions
             alerts, all_predictions = get_xgboost_predictions(df)
+            
+            # 3. Create Justifications and Final Alert List
+            final_alerts = create_individualized_justifications(df, alerts)
+            
+            # 4. Calculate Dashboard Metrics
+            dashboard_data = calculate_dashboard_metrics(all_predictions)
 
-            # === MISSING LOGIC ADDED HERE ===
-            alerts_data, dashboard_data = create_individualized_justifications(df, alerts)
+            # --- CRITICAL FIX 5: Map Python keys to expected HTML keys ---
+            final_alerts_output = []
+            for alert in final_alerts:
+                final_alerts_output.append({
+                    # Mapped to alert.confidence in JS
+                    'confidence': alert['fraud_probability'], 
+                    # Mapped to alert.justifications in JS
+                    'justifications': alert['advanced_justifications'], 
+                    # Pass through other keys used by JS
+                    'record_id': alert['record_id'],
+                    'amount': alert['amount'],
+                    'category': alert['category'],
+                    'customer_id': alert['customer_id'],
+                    'merchant_id': alert['merchant_id'],
+                    'step': alert['step'],
+                    'risk_factors': alert['risk_factors']
+                })
             
-            # Calculate simple dashboard metrics
-            total_records = len(df)
-            total_alerts = len(alerts)
-            
-            # If the data includes the 'fraud' column (test data)
-            if has_fraud_column:
-                true_positives = sum(1 for p in all_predictions if p['fraud_probability'] > optimal_threshold and p['actual_fraud'] == 1)
-                false_positives = sum(1 for p in all_predictions if p['fraud_probability'] > optimal_threshold and p['actual_fraud'] == 0)
-                false_negatives = sum(1 for p in all_predictions if p['fraud_probability'] <= optimal_threshold and p['actual_fraud'] == 1)
-                
-                dashboard_data = {
-                    'total_records': total_records,
-                    'total_alerts': total_alerts,
-                    'alert_rate': f"{total_alerts / total_records:.2%}" if total_records > 0 else "0.00%",
-                    'true_positives': true_positives,
-                    'false_positives': false_positives,
-                    'false_negatives': false_negatives,
-                    'precision': f"{true_positives / (true_positives + false_positives):.2%}" if (true_positives + false_positives) > 0 else "N/A",
-                    'recall': f"{true_positives / (true_positives + false_negatives):.2%}" if (true_positives + false_negatives) > 0 else "N/A"
-                }
-            else:
-                dashboard_data = {
-                    'total_records': total_records,
-                    'total_alerts': total_alerts,
-                    'alert_rate': f"{total_alerts / total_records:.2%}" if total_records > 0 else "0.00%"
-                }
-            # === END OF MISSING LOGIC ===
-            
-            print(f"🔍 DEBUG: Got {len(alerts)} alerts and {len(all_predictions)} predictions")
-            
-            # Clean up uploaded file
-            if os.path.exists(filepath):
-                os.remove(filepath)
-            
+            # --- CRITICAL FIX 6: Map Python dashboard keys to expected HTML keys ---
+            final_dashboard_output = {
+                'recall': dashboard_data['recall'],
+                'fraud_caught': dashboard_data['fraud_caught'],
+                'fraud_cases': dashboard_data['fraud_cases'],
+                'precision': dashboard_data['precision'],
+                # Mismatched keys in HTML are fixed here
+                'alerts_generated': dashboard_data['total_alerts'], # JS: dashboard.alerts_generated
+                'false_alerts': dashboard_data['false_positives']   # JS: dashboard.false_alerts
+            }
+
             return jsonify({
-                'success': True, 
-                'alerts': alerts_data, 
-                'dashboard': dashboard_data
+                'success': True,
+                # --- Send the correctly mapped data ---
+                'dashboard': final_dashboard_output,
+                'alerts': final_alerts_output
             })
-            
+
         except Exception as e:
-            print(f"❌ Upload error: {e}")
             traceback.print_exc()
+            return jsonify({'success': False, 'error': f'An unexpected error occurred during processing: {e}'}), 500
+        
+        finally:
+            # Clean up the uploaded file
             if os.path.exists(filepath):
                 os.remove(filepath)
-            return jsonify({'success': False, 'error': f'Processing error: {str(e)}'})
-    
-    return jsonify({'success': False, 'error': 'Invalid file type'})
 
-print("🚀 Starting Apex Fraud Studio...")
-load_model()
-
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
-
-# Render-specific port binding
-port = int(os.environ.get("PORT", 10000))
-print(f"✅ Server ready on port {port}")
-app.run(host='0.0.0.0', port=port)
+# Initialize the model on app start
+if __name__ == '__main__':
+    try:
+        load_model()
+        # Set host to '0.0.0.0' to be accessible externally (or on repl.it/remote host)
+        app.run(debug=True, host='0.0.0.0', port=5000)
+    except Exception as e:
+        print(f"Failed to start Flask app: {e}")
