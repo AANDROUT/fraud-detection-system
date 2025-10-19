@@ -149,18 +149,25 @@ def get_xgboost_predictions(test_df):
         if hasattr(model, 'get_booster'):
             expected_features = model.get_booster().feature_names
             X_test = X_test[expected_features]  # Final reordering
-        
-        # Get predictions
-        fraud_proba = model.predict_proba(X_test)[:, 1]
-        
-        # CRITICAL FIX: Use the OPTIMAL threshold from training (0.01)
-        threshold = optimal_threshold
-        print(f"🎯 Using OPTIMAL threshold from training: {threshold}")
-        
-        # ADD THIS DEBUG SECTION (PROPERLY INDENTED):
-        if 'fraud' in test_df.columns:
-            actual_fraud_indices = test_df[test_df['fraud'] == 1].index
-            fraud_probabilities = fraud_proba[actual_fraud_indices]
+
+            # Get predictions
+            fraud_proba = model.predict_proba(X_test)[:, 1]
+            threshold = optimal_threshold
+            
+            # === ADD THIS DEBUG ===
+            print(f"🔍 PREDICTION DEBUG:")
+            print(f"   Probability range: {fraud_proba.min():.6f} to {fraud_proba.max():.6f}")
+            print(f"   Mean probability: {fraud_proba.mean():.6f}")
+            print(f"   Threshold: {threshold}")
+            
+            # Check how many are above different threshold levels
+        for t in [0.0001, 0.001, 0.01, 0.1, 0.5]:
+                above_t = np.sum(fraud_proba > t)
+                print(f"   Above {t}: {above_t} records ({above_t/len(fraud_proba):.1%})")
+            
+            # Show top 5 highest probabilities
+            top_5_idx = np.argsort(fraud_proba)[-5:][::-1]
+            print(f"   Top 5 probabilities: {fraud_proba[top_5_idx]}")
             
             print(f"🔍 FRAUD CASE ANALYSIS:")
             print(f"   Actual fraud cases: {len(actual_fraud_indices)}")
@@ -612,5 +619,6 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 port = int(os.environ.get("PORT", 10000))
 print(f"✅ Server ready on port {port}")
 app.run(host='0.0.0.0', port=port)
+
 
 
