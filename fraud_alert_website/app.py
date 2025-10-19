@@ -4,6 +4,7 @@ import numpy as np
 import os
 import joblib
 from werkzeug.utils import secure_filename
+import traceback # Import necessary module
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads/'
@@ -92,28 +93,28 @@ def get_xgboost_predictions(test_df):
         threshold = optimal_threshold
         
         print(f"🔍 PREDICTION DEBUG:")
-        print(f"   Probability range: {fraud_proba.min():.6f} to {fraud_proba.max():.6f}")
-        print(f"   Mean probability: {fraud_proba.mean():.6f}")
-        print(f"   Threshold: {threshold}")
-        print(f"   Alerts above threshold: {np.sum(fraud_proba > threshold)}")
+        print(f"    Probability range: {fraud_proba.min():.6f} to {fraud_proba.max():.6f}")
+        print(f"    Mean probability: {fraud_proba.mean():.6f}")
+        print(f"    Threshold: {threshold}")
+        print(f"    Alerts above threshold: {np.sum(fraud_proba > threshold)}")
         
         # Check how many are above different threshold levels
         for t in [0.0001, 0.001, 0.01, 0.1, 0.5]:
             above_t = np.sum(fraud_proba > t)
-            print(f"   Above {t}: {above_t} records ({above_t/len(fraud_proba):.1%})")
+            print(f"    Above {t}: {above_t} records ({above_t/len(fraud_proba):.1%})")
         
         alerts = []
         all_predictions = []
 
         # After getting predictions, add:
         print(f"🔍 PROBABILITY ANALYSIS:")
-        print(f"   Min: {fraud_proba.min():.4f}")
-        print(f"   Max: {fraud_proba.max():.4f}") 
-        print(f"   Mean: {fraud_proba.mean():.4f}")
-        print(f"   % > 0.9: {np.mean(fraud_proba > 0.9):.2%}")
-        print(f"   % > 0.5: {np.mean(fraud_proba > 0.5):.2%}")
-        print(f"   % > 0.1: {np.mean(fraud_proba > 0.1):.2%}")
-        print(f"   % > threshold ({threshold}): {np.mean(fraud_proba > threshold):.2%}")
+        print(f"    Min: {fraud_proba.min():.4f}")
+        print(f"    Max: {fraud_proba.max():.4f}") 
+        print(f"    Mean: {fraud_proba.mean():.4f}")
+        print(f"    % > 0.9: {np.mean(fraud_proba > 0.9):.2%}")
+        print(f"    % > 0.5: {np.mean(fraud_proba > 0.5):.2%}")
+        print(f"    % > 0.1: {np.mean(fraud_proba > 0.1):.2%}")
+        print(f"    % > threshold ({threshold}): {np.mean(fraud_proba > threshold):.2%}")
 
         # === ADD DEBUG CODE HERE ===
         print(f"🔍 DEBUG: About to check threshold {threshold}")
@@ -148,7 +149,6 @@ def get_xgboost_predictions(test_df):
         
     except Exception as e:
         print(f"❌ Prediction error: {e}")
-        import traceback
         traceback.print_exc()
         return [], []
 
@@ -364,7 +364,7 @@ def create_individualized_justifications(df, alerts):
         enhanced_alerts.append(enhanced_alert)
     
     print(f"Enhanced {len(alerts)} alerts with UNIQUE justifications")
-    return enhanced_alerts, {}
+    return enhanced_alerts, {} # Return enhanced alerts and an empty dictionary (for dashboard logic consistency)
 
 def validate_uploaded_data(df):
     """Check if uploaded data has the required columns"""
@@ -414,6 +414,11 @@ def upload_file():
             df = pd.read_csv(filepath)
             print(f"📊 Loaded DataFrame shape: {df.shape}")
             
+            # CRITICAL FIX 1: Fill all NaNs to match training data before any other step
+            # The training script used: df = df.fillna(0)
+            df = df.fillna(0)
+            print("✅ Filled all NaNs/missing values with 0 to match training.")
+            
             # Check if fraud column exists
             has_fraud_column = 'fraud' in df.columns
             print(f"🎯 Fraud column present: {has_fraud_column}")
@@ -437,15 +442,20 @@ def upload_file():
             print("🧹 Cleaning data...")
             for col in df.columns:
                 if df[col].dtype == 'object':
-                    # Only clean string columns, don't convert to numeric!
-                    df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x)
+                    # CRITICAL FIX 2: DO NOT strip quotes from categorical features
+                    # The LabelEncoder was trained on strings *with* quotes (e.g., 'C1234')
+                    # Stripping them causes every value to be treated as an unseen category.
+                    # df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x) # <-- BUGGED LINE REMOVED
+                    pass # CORRECT: Leave categorical strings (with quotes) as is
                 
                 # Only convert these specific numeric columns
                 if col in ['amount', 'log_amount', 'cust_tx_count_1d', 'cust_tx_count_7d', 
-                       'cust_median_amt_7d', 'amount_over_cust_median_7d', 
-                       'cust_unique_merchants_30d', 'first_time_pair', 
-                       'time_since_last_pair_tx', 'mch_tx_count_1d', 'mch_unique_customers_7d']:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                           'cust_median_amt_7d', 'amount_over_cust_median_7d', 
+                           'cust_unique_merchants_30d', 'first_time_pair', 
+                           'time_since_last_pair_tx', 'mch_tx_count_1d', 'mch_unique_customers_7d']:
+                    # This line is now primarily for type consistency (e.g., ensuring int-like columns are numeric)
+                    # Use float to ensure consistency with calculated features like log_amount
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0).astype(float)
             
             # DO NOT convert categorical columns like 'customer', 'merchant', 'category' to numeric here!
             # Let the LabelEncoder handle them in get_xgboost_predictions
@@ -453,68 +463,40 @@ def upload_file():
             df = df.reset_index().rename(columns={'index': 'original_index'})
             
             # Use XGBoost for predictions
-            alerts, predictions = get_xgboost_predictions(df)
+            alerts, all_predictions = get_xgboost_predictions(df)
+
+            # === MISSING LOGIC ADDED HERE ===
+            alerts_data, dashboard_data = create_individualized_justifications(df, alerts)
             
-            print(f"🔍 DEBUG: Got {len(alerts)} alerts and {len(predictions)} predictions")
+            # Calculate simple dashboard metrics
+            total_records = len(df)
+            total_alerts = len(alerts)
             
-            # Create individualized justifications
-            enhanced_alerts, stats = create_individualized_justifications(df, alerts)
-            
-            # Calculate metrics
-            y_true = [pred['actual_fraud'] for pred in predictions] if predictions else []
-            enhanced_alert_ids = set([alert['record_id'] for alert in enhanced_alerts])
-            y_pred = [1 if i in enhanced_alert_ids else 0 for i in range(len(predictions))] if predictions else []
-            
-            tp = sum(1 for i in range(len(y_true)) if y_true[i] == 1 and y_pred[i] == 1) if y_true else 0
-            fp = sum(1 for i in range(len(y_true)) if y_true[i] == 0 and y_pred[i] == 1) if y_true else 0
-            fn = sum(1 for i in range(len(y_true)) if y_true[i] == 1 and y_pred[i] == 0) if y_true else 0
-            
-            precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-            recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-            
-            print(f"📊 METRICS - TP: {tp}, FP: {fp}, FN: {fn}")
-            print(f"📊 METRICS - Precision: {precision:.3f}, Recall: {recall:.3f}")
-            
-            # Format alerts for frontend
-            alerts_data = []
-            for alert in enhanced_alerts[:50]:
-                # Use ORIGINAL probability (not adjusted) - critical for consistent metrics
-                confidence_decimal = float(alert['fraud_probability'])
+            # If the data includes the 'fraud' column (test data)
+            if has_fraud_column:
+                true_positives = sum(1 for p in all_predictions if p['fraud_probability'] > optimal_threshold and p['actual_fraud'] == 1)
+                false_positives = sum(1 for p in all_predictions if p['fraud_probability'] > optimal_threshold and p['actual_fraud'] == 0)
+                false_negatives = sum(1 for p in all_predictions if p['fraud_probability'] <= optimal_threshold and p['actual_fraud'] == 1)
                 
-                alert_data = {
-                    'record_id': int(alert['record_id']),
-                    'confidence': confidence_decimal,
-                    'amount': f"${alert['raw_data'].get('amount', 0):.2f}",
-                    'category': alert['raw_data'].get('category', 'Unknown'),
-                    'customer_id': alert['raw_data'].get('customer', 'Unknown'),
-                    'merchant_id': alert['raw_data'].get('merchant', 'Unknown'),
-                    'step': str(alert['raw_data'].get('step', 'Unknown')),
-                    'risk_factors': f"{alert['risk_factors']} unique risk factors",
-                    'primary_risk': alert.get('primary_risk_factor', 'Multiple Factors'),
-                    'justifications': [
-                        {
-                            'title': j.get('title', 'Risk Factor'),
-                            'description': j.get('description', ''),
-                            'strength': j.get('strength', 0.5),
-                            'risk_level': j.get('risk_level', 'MEDIUM')
-                        }
-                        for j in alert.get('advanced_justifications', [])
-                    ]
+                dashboard_data = {
+                    'total_records': total_records,
+                    'total_alerts': total_alerts,
+                    'alert_rate': f"{total_alerts / total_records:.2%}" if total_records > 0 else "0.00%",
+                    'true_positives': true_positives,
+                    'false_positives': false_positives,
+                    'false_negatives': false_negatives,
+                    'precision': f"{true_positives / (true_positives + false_positives):.2%}" if (true_positives + false_positives) > 0 else "N/A",
+                    'recall': f"{true_positives / (true_positives + false_negatives):.2%}" if (true_positives + false_negatives) > 0 else "N/A"
                 }
-                alerts_data.append(alert_data)
+            else:
+                dashboard_data = {
+                    'total_records': total_records,
+                    'total_alerts': total_alerts,
+                    'alert_rate': f"{total_alerts / total_records:.2%}" if total_records > 0 else "0.00%"
+                }
+            # === END OF MISSING LOGIC ===
             
-            # Use actual fraud count for dashboard
-            actual_fraud_cases = fraud_count if has_fraud_column else 0
-            
-            dashboard_data = {
-                'recall': f"{recall:.1%}",
-                'precision': f"{precision:.1%}",
-                'fraud_caught': int(tp),
-                'fraud_cases': int(actual_fraud_cases),
-                'alerts_generated': int(len(enhanced_alerts)),
-                'false_alerts': int(fp),
-                'alert_efficiency': f"{tp/len(enhanced_alerts):.1%}" if enhanced_alerts else "0%"
-            }
+            print(f"🔍 DEBUG: Got {len(alerts)} alerts and {len(all_predictions)} predictions")
             
             # Clean up uploaded file
             if os.path.exists(filepath):
@@ -528,7 +510,6 @@ def upload_file():
             
         except Exception as e:
             print(f"❌ Upload error: {e}")
-            import traceback
             traceback.print_exc()
             if os.path.exists(filepath):
                 os.remove(filepath)
