@@ -101,51 +101,47 @@ def get_xgboost_predictions(test_df):
             print(f"   % of fraud cases above 0.1: {np.mean(fraud_probabilities > 0.1):.1%}")
             print(f"   % of fraud cases above 0.5: {np.mean(fraud_probabilities > 0.5):.1%}")
         
-        # ... existing code ...
+        alerts = []
+        all_predictions = []
 
-alerts = []
-all_predictions = []
+        # After getting predictions, add:
+        print(f"🔍 PROBABILITY ANALYSIS:")
+        print(f"   Min: {fraud_proba.min():.4f}")
+        print(f"   Max: {fraud_proba.max():.4f}") 
+        print(f"   Mean: {fraud_proba.mean():.4f}")
+        print(f"   % > 0.9: {np.mean(fraud_proba > 0.9):.2%}")
+        print(f"   % > 0.5: {np.mean(fraud_proba > 0.5):.2%}")
+        print(f"   % > 0.1: {np.mean(fraud_proba > 0.1):.2%}")
 
-# After getting predictions, add:
-print(f"🔍 PROBABILITY ANALYSIS:")
-print(f"   Min: {fraud_proba.min():.4f}")
-print(f"   Max: {fraud_proba.max():.4f}") 
-print(f"   Mean: {fraud_proba.mean():.4f}")
-print(f"   % > 0.9: {np.mean(fraud_proba > 0.9):.2%}")
-print(f"   % > 0.5: {np.mean(fraud_proba > 0.5):.2%}")
-print(f"   % > 0.1: {np.mean(fraud_proba > 0.1):.2%}")
+        # Use the OPTIMAL threshold from training (not arbitrary low threshold)
+        threshold = .01
 
-# Use the OPTIMAL threshold from training (not arbitrary low threshold)
-threshold = .01
+        # === ADD DEBUG CODE HERE ===
+        print(f"🔍 DEBUG: About to check threshold {threshold}")
+        print(f"🔍 Sample probabilities: {fraud_proba[:10]}")  # First 10 probabilities
 
-# === ADD DEBUG CODE HERE ===
-print(f"🔍 DEBUG: About to check threshold {threshold}")
-print(f"🔍 Sample probabilities: {fraud_proba[:10]}")  # First 10 probabilities
-
-for i, prob in enumerate(fraud_proba):
-    prob_float = float(prob)
-    all_predictions.append({
-        'record_id': i,
-        'fraud_probability': prob_float,
-        'actual_fraud': test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
-    })
-    
-    # DEBUG: Show what's happening with fraud cases
-    if 'fraud' in test_df.columns and test_df.iloc[i]['fraud'] == 1:
-        print(f"🔍 FRAUD CASE {i}: probability = {prob_float:.4f}, above threshold? {prob_float > threshold}")
-    
-    if prob_float > threshold:
-        alerts.append({
-            'record_id': i,
-            'fraud_probability': prob_float,
-            'raw_data': test_df.iloc[i].to_dict(),
-            'risk_level': 'CRITICAL' if prob_float > 0.8 else 'HIGH' if prob_float > 0.5 else 'MEDIUM' if prob_float > 0.2 else 'LOW',
-            'customer_id': str(test_df.iloc[i].get('customer', 'Unknown')),
-            'merchant_id': str(test_df.iloc[i].get('merchant', 'Unknown')),
-            'step': str(test_df.iloc[i].get('step', 'Unknown'))
-        })
-
-# ... rest of your code ...
+        for i, prob in enumerate(fraud_proba):
+            prob_float = float(prob)
+            all_predictions.append({
+                'record_id': i,
+                'fraud_probability': prob_float,
+                'actual_fraud': test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
+            })
+            
+            # DEBUG: Show what's happening with fraud cases
+            if 'fraud' in test_df.columns and test_df.iloc[i]['fraud'] == 1:
+                print(f"🔍 FRAUD CASE {i}: probability = {prob_float:.4f}, above threshold? {prob_float > threshold}")
+            
+            if prob_float > threshold:
+                alerts.append({
+                    'record_id': i,
+                    'fraud_probability': prob_float,
+                    'raw_data': test_df.iloc[i].to_dict(),
+                    'risk_level': 'CRITICAL' if prob_float > 0.8 else 'HIGH' if prob_float > 0.5 else 'MEDIUM' if prob_float > 0.2 else 'LOW',
+                    'customer_id': str(test_df.iloc[i].get('customer', 'Unknown')),
+                    'merchant_id': str(test_df.iloc[i].get('merchant', 'Unknown')),
+                    'step': str(test_df.iloc[i].get('step', 'Unknown'))
+                })
         
         print(f"✅ Generated {len(alerts)} alerts (optimal threshold: {threshold})")
         return alerts, all_predictions
@@ -155,7 +151,6 @@ for i, prob in enumerate(fraud_proba):
         import traceback
         traceback.print_exc()
         return [], []
-
 # ... [Keep all the other functions the same: create_individualized_justifications, validate_uploaded_data, upload_file, etc.]
 
 def create_individualized_justifications(df, alerts):
@@ -553,6 +548,7 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 port = int(os.environ.get("PORT", 10000))
 print(f"✅ Server ready on port {port}")
 app.run(host='0.0.0.0', port=port)
+
 
 
 
