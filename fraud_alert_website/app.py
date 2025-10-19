@@ -4,8 +4,6 @@ import numpy as np
 import os
 import joblib
 from werkzeug.utils import secure_filename
-from sklearn.preprocessing import LabelEncoder
-import xgboost as xgb
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads/'
@@ -14,112 +12,32 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 # Global variables for model and encoders
 model = None
 label_encoders = None
+optimal_threshold = None
+original_columns = None
 
 def load_model():
-    """Load the pre-trained XGBoost model"""
-    global model, label_encoders
+    """Load the pre-trained XGBoost model from create_model_files.py"""
+    global model, label_encoders, optimal_threshold, original_columns
     
     try:
-        if not os.path.exists('fraud_model.pkl'):
-            print("🔄 No saved model found, training new model...")
-            train_and_save_model()
-        else:
-            model = joblib.load('fraud_model.pkl')
-            label_encoders = joblib.load('label_encoders.pkl')
-            print("✅ Model loaded successfully")
-    except Exception as e:
-        print(f"❌ Error loading model: {e}")
-        print("🔄 Training new model...")
-        train_and_save_model()
-
-def load_dataset_from_parts():
-    """Load the full dataset from 6 parts"""
-    print("📥 Loading dataset from parts...")
-    
-    parts = []
-    for i in range(1, 7):
-        filename = f'BankSim_part_{i}.csv'
-        try:
-            part_df = pd.read_csv(filename)
-            parts.append(part_df)
-            print(f"✅ Loaded {filename}: {len(part_df)} records")
-        except Exception as e:
-            print(f"❌ Error loading {filename}: {e}")
-    
-    if not parts:
-        raise Exception("Could not load any dataset parts")
-    
-    full_df = pd.concat(parts, ignore_index=True)
-    print(f"📊 Combined dataset: {len(full_df)} total records")
-    return full_df
-
-def train_and_save_model():
-    """Train and save the model using the 6-part dataset"""
-    global model, label_encoders
-    
-    try:
-        print("📥 Loading dataset from parts...")
-        df = load_dataset_from_parts()
-        df = df.fillna(0)
+        # Load all files created by create_model_files.py
+        model = joblib.load('fraud_model.pkl')
+        label_encoders = joblib.load('label_encoders.pkl') 
+        optimal_threshold = joblib.load('optimal_threshold.pkl')
+        original_columns = joblib.load('original_columns.pkl')
         
-        print("🔧 Preparing features...")
-        X = df.drop(columns=["fraud"])
-        y = df["fraud"]
-        
-        # Encode categorical variables
-        X_encoded = X.copy()
-        label_encoders = {}
-        for col in X_encoded.columns:
-            if X_encoded[col].dtype == 'object':
-                le = LabelEncoder()
-                X_encoded[col] = le.fit_transform(X_encoded[col].astype(str))
-                label_encoders[col] = le
-        
-        print("🏋️ Training XGBoost model...")
-        ratio = (y == 0).sum() / (y == 1).sum()
-        model = xgb.XGBClassifier(
-            n_estimators=200,
-            learning_rate=0.1,
-            max_depth=6,
-            subsample=0.8,
-            colsample_bytree=0.8,
-            eval_metric='aucpr',
-            tree_method='hist',
-            scale_pos_weight=ratio,
-            random_state=42
-        )
-        
-        model.fit(X_encoded, y, verbose=False)
-        
-        # Save for future use
-        joblib.dump(model, 'fraud_model.pkl')
-        joblib.dump(label_encoders, 'label_encoders.pkl')
-        print("✅ Model trained and saved successfully")
+        print("✅ Pre-trained model loaded successfully")
+        print(f"🎯 Using threshold: {optimal_threshold}")
+        print(f"📋 Original columns ({len(original_columns)}): {original_columns}")
         
     except Exception as e:
-        print(f"❌ Error training model: {e}")
-        create_fallback_model()
-
-def create_fallback_model():
-    """Create a simple fallback model if training fails"""
-    global model, label_encoders
-    
-    print("🛠️ Creating fallback model...")
-    from sklearn.ensemble import RandomForestClassifier
-    
-    # Create dummy data for fallback model
-    X_dummy = np.random.rand(1000, 5)
-    y_dummy = (X_dummy[:, 0] > 0.7).astype(int)
-    
-    model = RandomForestClassifier(n_estimators=10, random_state=42)
-    model.fit(X_dummy, y_dummy)
-    
-    label_encoders = {}
-    print("✅ Fallback model created")
+        print(f"❌ Error loading pre-trained model: {e}")
+        print("💡 Run create_model_files.py first to generate model files")
+        raise Exception("Pre-trained model files missing. Run create_model_files.py first")
 
 def get_xgboost_predictions(test_df):
     """Get predictions from XGBoost model with PROPER encoding"""
-    global model, label_encoders
+    global model, label_encoders, optimal_threshold, original_columns
     
     if model is None:
         load_model()
@@ -135,6 +53,16 @@ def get_xgboost_predictions(test_df):
         
         print(f"📊 X_test shape before encoding: {X_test.shape}")
         print(f"🔍 Data types: {X_test.dtypes}")
+        
+        # CRITICAL: Ensure EXACT same column order as training
+        missing_cols = set(original_columns) - set(X_test.columns)
+        if missing_cols:
+            print(f"❌ Missing columns: {missing_cols}")
+            raise ValueError(f"Missing required columns: {missing_cols}")
+        
+        # Reorder to match training data exactly
+        X_test = X_test[original_columns]
+        print("✅ Columns reordered to match training data")
         
         # CRITICAL FIX: Use EXACT same encoding as training
         for col in X_test.columns:
@@ -154,24 +82,25 @@ def get_xgboost_predictions(test_df):
         
         print(f"📊 X_test shape after encoding: {X_test.shape}")
         
-        # Ensure all training columns are present
+        # Ensure all training columns are present (double check)
         if hasattr(model, 'get_booster'):
             expected_features = model.get_booster().feature_names
-            
-            missing_cols = set(expected_features) - set(X_test.columns)
-            for col in missing_cols:
-                X_test[col] = 0
-                print(f"➕ Added missing column: {col}")
-            
-            X_test = X_test[expected_features]
+            X_test = X_test[expected_features]  # Final reordering
         
-        # Get predictions with reasonable threshold
+        # Get predictions with optimal threshold
         fraud_proba = model.predict_proba(X_test)[:, 1]
+        threshold = optimal_threshold
         
-        print(f"📊 Prediction range: {fraud_proba.min():.4f} to {fraud_proba.max():.4f}")
-        print(f"📈 Alerts above 0.1: {np.sum(fraud_proba > 0.1)}")
-        print(f"📈 Alerts above 0.05: {np.sum(fraud_proba > 0.05)}")
-        print(f"📈 Alerts above 0.01: {np.sum(fraud_proba > 0.01)}")
+        print(f"🔍 PREDICTION DEBUG:")
+        print(f"   Probability range: {fraud_proba.min():.6f} to {fraud_proba.max():.6f}")
+        print(f"   Mean probability: {fraud_proba.mean():.6f}")
+        print(f"   Threshold: {threshold}")
+        print(f"   Alerts above threshold: {np.sum(fraud_proba > threshold)}")
+        
+        # Check how many are above different threshold levels
+        for t in [0.0001, 0.001, 0.01, 0.1, 0.5]:
+            above_t = np.sum(fraud_proba > t)
+            print(f"   Above {t}: {above_t} records ({above_t/len(fraud_proba):.1%})")
         
         alerts = []
         all_predictions = []
@@ -184,10 +113,12 @@ def get_xgboost_predictions(test_df):
         print(f"   % > 0.9: {np.mean(fraud_proba > 0.9):.2%}")
         print(f"   % > 0.5: {np.mean(fraud_proba > 0.5):.2%}")
         print(f"   % > 0.1: {np.mean(fraud_proba > 0.1):.2%}")
-        
-        # Use reasonable threshold for 90% recall
-        threshold = 0.0028  # Start with this
-        
+        print(f"   % > threshold ({threshold}): {np.mean(fraud_proba > threshold):.2%}")
+
+        # === ADD DEBUG CODE HERE ===
+        print(f"🔍 DEBUG: About to check threshold {threshold}")
+        print(f"🔍 Sample probabilities: {fraud_proba[:10]}")  # First 10 probabilities
+
         for i, prob in enumerate(fraud_proba):
             prob_float = float(prob)
             all_predictions.append({
@@ -196,6 +127,11 @@ def get_xgboost_predictions(test_df):
                 'actual_fraud': test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
             })
             
+            # DEBUG: Show what's happening with fraud cases
+            if 'fraud' in test_df.columns and test_df.iloc[i]['fraud'] == 1:
+                print(f"🔍 FRAUD CASE {i}: probability = {prob_float:.4f}, above threshold? {prob_float > threshold}")
+            
+            # Use the OPTIMAL threshold from training
             if prob_float > threshold:
                 alerts.append({
                     'record_id': i,
@@ -207,7 +143,7 @@ def get_xgboost_predictions(test_df):
                     'step': str(test_df.iloc[i].get('step', 'Unknown'))
                 })
         
-        print(f"✅ Generated {len(alerts)} alerts (threshold: {threshold})")
+        print(f"✅ Generated {len(alerts)} alerts (optimal threshold: {threshold})")
         return alerts, all_predictions
         
     except Exception as e:
@@ -421,13 +357,9 @@ def create_individualized_justifications(df, alerts):
         enhanced_alert['risk_factors'] = len(justifications)
         enhanced_alert['primary_risk_factor'] = justifications[0]['category'] if justifications else 'UNKNOWN'
         
-        # Boost confidence based on strongest justification
-        if justifications:
-            max_strength = max(j['strength'] for j in justifications)
-            confidence_boost = min(0.3, max_strength * 0.4)
-            enhanced_alert['adjusted_confidence'] = min(0.99, probability + confidence_boost)
-        else:
-            enhanced_alert['adjusted_confidence'] = probability
+        # CRITICAL FIX: Don't adjust confidence - this affects precision/recall
+        # Justifications are for display only, don't change the actual prediction
+        enhanced_alert['adjusted_confidence'] = probability  # Keep original probability
         
         enhanced_alerts.append(enhanced_alert)
     
@@ -501,7 +433,7 @@ def upload_file():
             
             print("✅ All required columns present!")
             
-            # FIXED Data cleaning (proper indentation)
+            # Data cleaning
             print("🧹 Cleaning data...")
             for col in df.columns:
                 if df[col].dtype == 'object':
@@ -546,8 +478,8 @@ def upload_file():
             # Format alerts for frontend
             alerts_data = []
             for alert in enhanced_alerts[:50]:
-                # Use adjusted confidence if available
-                confidence_decimal = float(alert.get('adjusted_confidence', alert['fraud_probability']))
+                # Use ORIGINAL probability (not adjusted) - critical for consistent metrics
+                confidence_decimal = float(alert['fraud_probability'])
                 
                 alert_data = {
                     'record_id': int(alert['record_id']),
@@ -571,11 +503,14 @@ def upload_file():
                 }
                 alerts_data.append(alert_data)
             
+            # Use actual fraud count for dashboard
+            actual_fraud_cases = fraud_count if has_fraud_column else 0
+            
             dashboard_data = {
                 'recall': f"{recall:.1%}",
                 'precision': f"{precision:.1%}",
                 'fraud_caught': int(tp),
-                'fraud_cases': int(sum(y_true)) if y_true else 0,
+                'fraud_cases': int(actual_fraud_cases),
                 'alerts_generated': int(len(enhanced_alerts)),
                 'false_alerts': int(fp),
                 'alert_efficiency': f"{tp/len(enhanced_alerts):.1%}" if enhanced_alerts else "0%"
@@ -601,13 +536,13 @@ def upload_file():
     
     return jsonify({'success': False, 'error': 'Invalid file type'})
 
-if __name__ == '__main__':
-    print("🚀 Starting Apex Fraud Studio...")
-    load_model()
-    
-    if not os.path.exists(app.config['UPLOAD_FOLDER']):
-        os.makedirs(app.config['UPLOAD_FOLDER'])
-    
-    port = int(os.environ.get("PORT", 5000))
-    print(f"✅ Server ready on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=False)
+print("🚀 Starting Apex Fraud Studio...")
+load_model()
+
+if not os.path.exists(app.config['UPLOAD_FOLDER']):
+    os.makedirs(app.config['UPLOAD_FOLDER'])
+
+# Render-specific port binding
+port = int(os.environ.get("PORT", 10000))
+print(f"✅ Server ready on port {port}")
+app.run(host='0.0.0.0', port=port)
