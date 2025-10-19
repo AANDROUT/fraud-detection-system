@@ -125,8 +125,6 @@ def get_xgboost_predictions(test_df):
         X_test = X_test[original_columns]
         print("✅ Columns reordered to match training data")
         
-        # Continue with encoding and prediction...
-        
         # CRITICAL FIX: Use EXACT same encoding as training
         for col in X_test.columns:
             if col in label_encoders:
@@ -149,34 +147,39 @@ def get_xgboost_predictions(test_df):
         if hasattr(model, 'get_booster'):
             expected_features = model.get_booster().feature_names
             X_test = X_test[expected_features]  # Final reordering
-
-            # Get predictions
-            fraud_proba = model.predict_proba(X_test)[:, 1]
-            threshold = optimal_threshold
-            
-            # === ADD THIS DEBUG ===
-            print(f"🔍 PREDICTION DEBUG:")
-            print(f"   Probability range: {fraud_proba.min():.6f} to {fraud_proba.max():.6f}")
-            print(f"   Mean probability: {fraud_proba.mean():.6f}")
-            print(f"   Threshold: {threshold}")
-            
-            # Check how many are above different threshold levels
+        
+        # Get predictions
+        fraud_proba = model.predict_proba(X_test)[:, 1]
+        threshold = optimal_threshold
+        
+        # === ADD THIS DEBUG ===
+        print(f"🔍 PREDICTION DEBUG:")
+        print(f"   Probability range: {fraud_proba.min():.6f} to {fraud_proba.max():.6f}")
+        print(f"   Mean probability: {fraud_proba.mean():.6f}")
+        print(f"   Threshold: {threshold}")
+        
+        # Check how many are above different threshold levels
         for t in [0.0001, 0.001, 0.01, 0.1, 0.5]:
-                above_t = np.sum(fraud_proba > t)
-                print(f"   Above {t}: {above_t} records ({above_t/len(fraud_proba):.1%})")
-            
-            # Show top 5 highest probabilities
-            top_5_idx = np.argsort(fraud_proba)[-5:][::-1]
-            print(f"   Top 5 probabilities: {fraud_proba[top_5_idx]}")
-            
-            print(f"🔍 FRAUD CASE ANALYSIS:")
-            print(f"   Actual fraud cases: {len(actual_fraud_indices)}")
-            print(f"   Fraud case probabilities - Min: {fraud_probabilities.min():.4f}")
-            print(f"   Fraud case probabilities - Max: {fraud_probabilities.max():.4f}")
-            print(f"   Fraud case probabilities - Mean: {fraud_probabilities.mean():.4f}")
-            print(f"   % of fraud cases above threshold ({threshold}): {np.mean(fraud_probabilities > threshold):.1%}")
-            print(f"   % of fraud cases above 0.1: {np.mean(fraud_probabilities > 0.1):.1%}")
-            print(f"   % of fraud cases above 0.5: {np.mean(fraud_probabilities > 0.5):.1%}")
+            above_t = np.sum(fraud_proba > t)
+            print(f"   Above {t}: {above_t} records ({above_t/len(fraud_proba):.1%})")
+        
+        # Show top 5 highest probabilities
+        top_5_idx = np.argsort(fraud_proba)[-5:][::-1]
+        print(f"   Top 5 probabilities: {fraud_proba[top_5_idx]}")
+        
+        # Fraud case analysis (if fraud column exists)
+        if 'fraud' in test_df.columns:
+            actual_fraud_indices = test_df[test_df['fraud'] == 1].index
+            if len(actual_fraud_indices) > 0:
+                fraud_probabilities = fraud_proba[actual_fraud_indices]
+                print(f"🔍 FRAUD CASE ANALYSIS:")
+                print(f"   Actual fraud cases: {len(actual_fraud_indices)}")
+                print(f"   Fraud case probabilities - Min: {fraud_probabilities.min():.4f}")
+                print(f"   Fraud case probabilities - Max: {fraud_probabilities.max():.4f}")
+                print(f"   Fraud case probabilities - Mean: {fraud_probabilities.mean():.4f}")
+                print(f"   % of fraud cases above threshold ({threshold}): {np.mean(fraud_probabilities > threshold):.1%}")
+                print(f"   % of fraud cases above 0.1: {np.mean(fraud_probabilities > 0.1):.1%}")
+                print(f"   % of fraud cases above 0.5: {np.mean(fraud_probabilities > 0.5):.1%}")
         
         alerts = []
         all_predictions = []
@@ -510,18 +513,8 @@ def upload_file():
             print("✅ All required columns present!")
             
             # Data cleaning
-            print("🧹 Cleaning data...")
-            for col in df.columns:
-                if df[col].dtype == 'object':
-                    # Only clean string columns, don't convert to numeric!
-                    df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x)
-                
-                # Only convert these specific numeric columns
-                if col in ['amount', 'log_amount', 'cust_tx_count_1d', 'cust_tx_count_7d', 
-                       'cust_median_amt_7d', 'amount_over_cust_median_7d', 
-                       'cust_unique_merchants_30d', 'first_time_pair', 
-                       'time_since_last_pair_tx', 'mch_tx_count_1d', 'mch_unique_customers_7d']:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            # Use the comprehensive cleaning function
+            df = clean_uploaded_data(df)
             
             # DO NOT convert categorical columns like 'customer', 'merchant', 'category' to numeric here!
             # Let the LabelEncoder handle them in get_xgboost_predictions
@@ -619,6 +612,7 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 port = int(os.environ.get("PORT", 10000))
 print(f"✅ Server ready on port {port}")
 app.run(host='0.0.0.0', port=port)
+
 
 
 
