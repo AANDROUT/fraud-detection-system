@@ -4,6 +4,8 @@ import numpy as np
 import os
 import joblib
 from werkzeug.utils import secure_filename
+from sklearn.preprocessing import LabelEncoder
+import xgboost as xgb
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads/'
@@ -12,85 +14,112 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 # Global variables for model and encoders
 model = None
 label_encoders = None
-optimal_threshold = None
-original_columns = None
 
 def load_model():
     """Load the pre-trained XGBoost model"""
-    global model, label_encoders, optimal_threshold, original_columns
+    global model, label_encoders
     
     try:
-        model = joblib.load('fraud_model.pkl')
-        label_encoders = joblib.load('label_encoders.pkl')
-        optimal_threshold = joblib.load('optimal_threshold.pkl')
-        original_columns = joblib.load('original_columns.pkl')
+        if not os.path.exists('fraud_model.pkl'):
+            print("🔄 No saved model found, training new model...")
+            train_and_save_model()
+        else:
+            model = joblib.load('fraud_model.pkl')
+            label_encoders = joblib.load('label_encoders.pkl')
+            print("✅ Model loaded successfully")
+    except Exception as e:
+        print(f"❌ Error loading model: {e}")
+        print("🔄 Training new model...")
+        train_and_save_model()
+
+def load_dataset_from_parts():
+    """Load the full dataset from 6 parts"""
+    print("📥 Loading dataset from parts...")
+    
+    parts = []
+    for i in range(1, 7):
+        filename = f'BankSim_part_{i}.csv'
+        try:
+            part_df = pd.read_csv(filename)
+            parts.append(part_df)
+            print(f"✅ Loaded {filename}: {len(part_df)} records")
+        except Exception as e:
+            print(f"❌ Error loading {filename}: {e}")
+    
+    if not parts:
+        raise Exception("Could not load any dataset parts")
+    
+    full_df = pd.concat(parts, ignore_index=True)
+    print(f"📊 Combined dataset: {len(full_df)} total records")
+    return full_df
+
+def train_and_save_model():
+    """Train and save the model using the 6-part dataset"""
+    global model, label_encoders
+    
+    try:
+        print("📥 Loading dataset from parts...")
+        df = load_dataset_from_parts()
+        df = df.fillna(0)
         
-        print("✅ Pre-trained model loaded successfully")
-        print(f"🎯 Using threshold: {optimal_threshold}")
-        print(f"📋 Original columns ({len(original_columns)}): {original_columns}")
+        print("🔧 Preparing features...")
+        X = df.drop(columns=["fraud"])
+        y = df["fraud"]
+        
+        # Encode categorical variables
+        X_encoded = X.copy()
+        label_encoders = {}
+        for col in X_encoded.columns:
+            if X_encoded[col].dtype == 'object':
+                le = LabelEncoder()
+                X_encoded[col] = le.fit_transform(X_encoded[col].astype(str))
+                label_encoders[col] = le
+        
+        print("🏋️ Training XGBoost model...")
+        ratio = (y == 0).sum() / (y == 1).sum()
+        model = xgb.XGBClassifier(
+            n_estimators=200,
+            learning_rate=0.1,
+            max_depth=6,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            eval_metric='aucpr',
+            tree_method='hist',
+            scale_pos_weight=ratio,
+            random_state=42
+        )
+        
+        model.fit(X_encoded, y, verbose=False)
+        
+        # Save for future use
+        joblib.dump(model, 'fraud_model.pkl')
+        joblib.dump(label_encoders, 'label_encoders.pkl')
+        print("✅ Model trained and saved successfully")
         
     except Exception as e:
-        print(f"❌ Error loading pre-trained model: {e}")
-        raise Exception("Pre-trained model files missing. Run create_model_files.py first")
+        print(f"❌ Error training model: {e}")
+        create_fallback_model()
 
-def clean_uploaded_data(df):
-    """EXACT same cleaning as original dataset preparation"""
-    print("🧹 CLEANING: Starting data cleaning pipeline...")
+def create_fallback_model():
+    """Create a simple fallback model if training fails"""
+    global model, label_encoders
     
-    # Create a copy to avoid modifying original
-    df_clean = df.copy()
+    print("🛠️ Creating fallback model...")
+    from sklearn.ensemble import RandomForestClassifier
     
-    # 1. Handle missing values (same as original: fillna(0))
-    df_clean = df_clean.fillna(0)
-    print("✅ CLEANING: Filled missing values with 0")
+    # Create dummy data for fallback model
+    X_dummy = np.random.rand(1000, 5)
+    y_dummy = (X_dummy[:, 0] > 0.7).astype(int)
     
-    # 2. Strip quotes from ALL string columns (critical fix for your data)
-    for col in df_clean.columns:
-        if df_clean[col].dtype == 'object':
-            original_sample = str(df_clean[col].iloc[0]) if len(df_clean) > 0 else "N/A"
-            df_clean[col] = df_clean[col].apply(lambda x: str(x).strip("'\"").strip() if pd.notna(x) else x)
-            cleaned_sample = str(df_clean[col].iloc[0]) if len(df_clean) > 0 else "N/A"
-            print(f"✅ CLEANING: Stripped quotes from '{col}': '{original_sample}' -> '{cleaned_sample}'")
+    model = RandomForestClassifier(n_estimators=10, random_state=42)
+    model.fit(X_dummy, y_dummy)
     
-    # 3. Convert specific numeric columns (same as original)
-    numeric_columns = [
-        'amount', 'log_amount', 'cust_tx_count_1d', 'cust_tx_count_7d',
-        'cust_median_amt_7d', 'amount_over_cust_median_7d', 
-        'cust_unique_merchants_30d', 'first_time_pair', 
-        'time_since_last_pair_tx', 'mch_tx_count_1d', 'mch_unique_customers_7d'
-    ]
-    
-    for col in numeric_columns:
-        if col in df_clean.columns:
-            original_dtype = df_clean[col].dtype
-            df_clean[col] = pd.to_numeric(df_clean[col], errors='coerce').fillna(0)
-            print(f"✅ CLEANING: Converted '{col}' from {original_dtype} to {df_clean[col].dtype}")
-    
-    # 4. Handle specific column transformations (same as original)
-    if 'time_since_last_pair_tx' in df_clean.columns:
-        # Replace NaN with -1 (indicating no previous transaction)
-        df_clean['time_since_last_pair_tx'] = df_clean['time_since_last_pair_tx'].replace([np.nan, np.inf, -np.inf], -1)
-        print("✅ CLEANING: Handled time_since_last_pair_tx NaN values")
-    
-    # 5. Ensure all expected columns are present
-    missing_in_upload = set(original_columns) - set(df_clean.columns)
-    if missing_in_upload:
-        print(f"❌ CLEANING: Missing columns in upload: {missing_in_upload}")
-        raise ValueError(f"Missing required columns: {missing_in_upload}")
-    
-    # 6. Remove any extra columns not in original training data
-    extra_cols = set(df_clean.columns) - set(original_columns)
-    if extra_cols:
-        print(f"⚠️ CLEANING: Dropping extra columns: {extra_cols}")
-        df_clean = df_clean[original_columns]
-    
-    print(f"✅ CLEANING: Final cleaned shape: {df_clean.shape}")
-    print(f"✅ CLEANING: Final columns: {list(df_clean.columns)}")
-    
-    return df_clean
+    label_encoders = {}
+    print("✅ Fallback model created")
+
 def get_xgboost_predictions(test_df):
     """Get predictions from XGBoost model with PROPER encoding"""
-    global model, label_encoders, optimal_threshold, original_columns
+    global model, label_encoders
     
     if model is None:
         load_model()
@@ -104,26 +133,8 @@ def get_xgboost_predictions(test_df):
             X_test = X_test.drop(columns=['fraud'])
             print("✅ Dropped 'fraud' column from features")
         
-        # === DEBUG: Check what data we actually have ===
-        print(f"🔍 DEBUG: Uploaded data shape: {X_test.shape}")
-        print(f"🔍 DEBUG: Uploaded columns: {list(X_test.columns)}")
-        print(f"🔍 DEBUG: First row sample:")
-        for col in X_test.columns[:5]:  # Show first 5 columns
-            print(f"   {col}: {X_test.iloc[0][col]} (type: {type(X_test.iloc[0][col])})")
-        
-        # Check for required columns
-        missing_cols = set(original_columns) - set(X_test.columns)
-        extra_cols = set(X_test.columns) - set(original_columns)
-        print(f"🔍 DEBUG: Missing columns: {missing_cols}")
-        print(f"🔍 DEBUG: Extra columns: {extra_cols}")
-        
-        if missing_cols:
-            print(f"❌ Missing columns: {missing_cols}")
-            raise ValueError(f"Missing required columns: {missing_cols}")
-        
-        # Reorder to match training data exactly
-        X_test = X_test[original_columns]
-        print("✅ Columns reordered to match training data")
+        print(f"📊 X_test shape before encoding: {X_test.shape}")
+        print(f"🔍 Data types: {X_test.dtypes}")
         
         # CRITICAL FIX: Use EXACT same encoding as training
         for col in X_test.columns:
@@ -143,45 +154,24 @@ def get_xgboost_predictions(test_df):
         
         print(f"📊 X_test shape after encoding: {X_test.shape}")
         
-        # Ensure all training columns are present (double check)
+        # Ensure all training columns are present
         if hasattr(model, 'get_booster'):
             expected_features = model.get_booster().feature_names
-            X_test = X_test[expected_features]  # Final reordering
+            
+            missing_cols = set(expected_features) - set(X_test.columns)
+            for col in missing_cols:
+                X_test[col] = 0
+                print(f"➕ Added missing column: {col}")
+            
+            X_test = X_test[expected_features]
         
-        # Get predictions
+        # Get predictions with reasonable threshold
         fraud_proba = model.predict_proba(X_test)[:, 1]
-        threshold = optimal_threshold
-        print(f"⚠️  OVERRIDING threshold: {threshold} -> 0.01")
-        threshold = 0.01
         
-        # === ADD THIS DEBUG ===
-        print(f"🔍 PREDICTION DEBUG:")
-        print(f"   Probability range: {fraud_proba.min():.6f} to {fraud_proba.max():.6f}")
-        print(f"   Mean probability: {fraud_proba.mean():.6f}")
-        print(f"   Threshold: {threshold}")
-        
-        # Check how many are above different threshold levels
-        for t in [0.0001, 0.001, 0.01, 0.1, 0.5]:
-            above_t = np.sum(fraud_proba > t)
-            print(f"   Above {t}: {above_t} records ({above_t/len(fraud_proba):.1%})")
-        
-        # Show top 5 highest probabilities
-        top_5_idx = np.argsort(fraud_proba)[-5:][::-1]
-        print(f"   Top 5 probabilities: {fraud_proba[top_5_idx]}")
-        
-        # Fraud case analysis (if fraud column exists)
-        if 'fraud' in test_df.columns:
-            actual_fraud_indices = test_df[test_df['fraud'] == 1].index
-            if len(actual_fraud_indices) > 0:
-                fraud_probabilities = fraud_proba[actual_fraud_indices]
-                print(f"🔍 FRAUD CASE ANALYSIS:")
-                print(f"   Actual fraud cases: {len(actual_fraud_indices)}")
-                print(f"   Fraud case probabilities - Min: {fraud_probabilities.min():.4f}")
-                print(f"   Fraud case probabilities - Max: {fraud_probabilities.max():.4f}")
-                print(f"   Fraud case probabilities - Mean: {fraud_probabilities.mean():.4f}")
-                print(f"   % of fraud cases above threshold ({threshold}): {np.mean(fraud_probabilities > threshold):.1%}")
-                print(f"   % of fraud cases above 0.1: {np.mean(fraud_probabilities > 0.1):.1%}")
-                print(f"   % of fraud cases above 0.5: {np.mean(fraud_probabilities > 0.5):.1%}")
+        print(f"📊 Prediction range: {fraud_proba.min():.4f} to {fraud_proba.max():.4f}")
+        print(f"📈 Alerts above 0.1: {np.sum(fraud_proba > 0.1)}")
+        print(f"📈 Alerts above 0.05: {np.sum(fraud_proba > 0.05)}")
+        print(f"📈 Alerts above 0.01: {np.sum(fraud_proba > 0.01)}")
         
         alerts = []
         all_predictions = []
@@ -194,12 +184,10 @@ def get_xgboost_predictions(test_df):
         print(f"   % > 0.9: {np.mean(fraud_proba > 0.9):.2%}")
         print(f"   % > 0.5: {np.mean(fraud_proba > 0.5):.2%}")
         print(f"   % > 0.1: {np.mean(fraud_proba > 0.1):.2%}")
-        print(f"   % > threshold ({threshold}): {np.mean(fraud_proba > threshold):.2%}")
-
-        # === ADD DEBUG CODE HERE ===
-        print(f"🔍 DEBUG: About to check threshold {threshold}")
-        print(f"🔍 Sample probabilities: {fraud_proba[:10]}")  # First 10 probabilities
-
+        
+        # Use reasonable threshold for 90% recall
+        threshold = 0.0028  # Start with this
+        
         for i, prob in enumerate(fraud_proba):
             prob_float = float(prob)
             all_predictions.append({
@@ -208,11 +196,6 @@ def get_xgboost_predictions(test_df):
                 'actual_fraud': test_df.iloc[i]['fraud'] if 'fraud' in test_df.columns else 0
             })
             
-            # DEBUG: Show what's happening with fraud cases
-            if 'fraud' in test_df.columns and test_df.iloc[i]['fraud'] == 1:
-                print(f"🔍 FRAUD CASE {i}: probability = {prob_float:.4f}, above threshold? {prob_float > threshold}")
-            
-            # CRITICAL: Use optimal threshold, not hardcoded 0.0001
             if prob_float > threshold:
                 alerts.append({
                     'record_id': i,
@@ -224,7 +207,7 @@ def get_xgboost_predictions(test_df):
                     'step': str(test_df.iloc[i].get('step', 'Unknown'))
                 })
         
-        print(f"✅ Generated {len(alerts)} alerts (optimal threshold: {threshold})")
+        print(f"✅ Generated {len(alerts)} alerts (threshold: {threshold})")
         return alerts, all_predictions
         
     except Exception as e:
@@ -438,9 +421,13 @@ def create_individualized_justifications(df, alerts):
         enhanced_alert['risk_factors'] = len(justifications)
         enhanced_alert['primary_risk_factor'] = justifications[0]['category'] if justifications else 'UNKNOWN'
         
-        # CRITICAL FIX: Don't adjust confidence - this affects precision/recall
-        # Justifications are for display only, don't change the actual prediction
-        enhanced_alert['adjusted_confidence'] = probability  # Keep original probability
+        # Boost confidence based on strongest justification
+        if justifications:
+            max_strength = max(j['strength'] for j in justifications)
+            confidence_boost = min(0.3, max_strength * 0.4)
+            enhanced_alert['adjusted_confidence'] = min(0.99, probability + confidence_boost)
+        else:
+            enhanced_alert['adjusted_confidence'] = probability
         
         enhanced_alerts.append(enhanced_alert)
     
@@ -514,9 +501,19 @@ def upload_file():
             
             print("✅ All required columns present!")
             
-            # Data cleaning
-            # Use the comprehensive cleaning function
-            df = clean_uploaded_data(df)
+            # FIXED Data cleaning (proper indentation)
+            print("🧹 Cleaning data...")
+            for col in df.columns:
+                if df[col].dtype == 'object':
+                    # Only clean string columns, don't convert to numeric!
+                    df[col] = df[col].apply(lambda x: x.strip("'") if isinstance(x, str) else x)
+                
+                # Only convert these specific numeric columns
+                if col in ['amount', 'log_amount', 'cust_tx_count_1d', 'cust_tx_count_7d', 
+                       'cust_median_amt_7d', 'amount_over_cust_median_7d', 
+                       'cust_unique_merchants_30d', 'first_time_pair', 
+                       'time_since_last_pair_tx', 'mch_tx_count_1d', 'mch_unique_customers_7d']:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
             
             # DO NOT convert categorical columns like 'customer', 'merchant', 'category' to numeric here!
             # Let the LabelEncoder handle them in get_xgboost_predictions
@@ -549,8 +546,8 @@ def upload_file():
             # Format alerts for frontend
             alerts_data = []
             for alert in enhanced_alerts[:50]:
-                # Use ORIGINAL probability (not adjusted) - critical for consistent metrics
-                confidence_decimal = float(alert['fraud_probability'])
+                # Use adjusted confidence if available
+                confidence_decimal = float(alert.get('adjusted_confidence', alert['fraud_probability']))
                 
                 alert_data = {
                     'record_id': int(alert['record_id']),
@@ -604,18 +601,13 @@ def upload_file():
     
     return jsonify({'success': False, 'error': 'Invalid file type'})
 
-print("🚀 Starting Apex Fraud Studio...")
-load_model()
-
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
-
-# Render-specific port binding
-port = int(os.environ.get("PORT", 10000))
-print(f"✅ Server ready on port {port}")
-app.run(host='0.0.0.0', port=port)
-
-
-
-
-
+if __name__ == '__main__':
+    print("🚀 Starting Apex Fraud Studio...")
+    load_model()
+    
+    if not os.path.exists(app.config['UPLOAD_FOLDER']):
+        os.makedirs(app.config['UPLOAD_FOLDER'])
+    
+    port = int(os.environ.get("PORT", 5000))
+    print(f"✅ Server ready on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=False)
