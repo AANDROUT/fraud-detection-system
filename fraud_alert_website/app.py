@@ -114,7 +114,7 @@ def get_xgboost_predictions(test_df):
         print(f"   % > 0.1: {np.mean(fraud_proba > 0.1):.2%}")
 
         # Use the OPTIMAL threshold from training (not arbitrary low threshold)
-        threshold = optimal_threshold
+        threshold = .0001
 
         # === ADD DEBUG CODE HERE ===
         print(f"🔍 DEBUG: About to check threshold {threshold}")
@@ -548,6 +548,7 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 port = int(os.environ.get("PORT", 10000))
 print(f"✅ Server ready on port {port}")
 app.run(host='0.0.0.0', port=port)
+
 
 
 
