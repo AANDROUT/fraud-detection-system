@@ -151,6 +151,8 @@ def get_xgboost_predictions(test_df):
         # Get predictions
         fraud_proba = model.predict_proba(X_test)[:, 1]
         threshold = optimal_threshold
+        print(f"⚠️  OVERRIDING threshold: {threshold} -> 0.01")
+        threshold = 0.01
         
         # === ADD THIS DEBUG ===
         print(f"🔍 PREDICTION DEBUG:")
@@ -612,6 +614,7 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 port = int(os.environ.get("PORT", 10000))
 print(f"✅ Server ready on port {port}")
 app.run(host='0.0.0.0', port=port)
+
 
 
 
