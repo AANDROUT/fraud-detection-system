@@ -49,25 +49,28 @@ def get_xgboost_predictions(test_df):
             X_test = X_test.drop(columns=['fraud'])
             print("✅ Dropped 'fraud' column from features")
         
-        print(f"📊 X_test shape before encoding: {X_test.shape}")
-        print(f"🔍 Data types: {X_test.dtypes}")
+        # === DEBUG: Check what data we actually have ===
+        print(f"🔍 DEBUG: Uploaded data shape: {X_test.shape}")
+        print(f"🔍 DEBUG: Uploaded columns: {list(X_test.columns)}")
+        print(f"🔍 DEBUG: First row sample:")
+        for col in X_test.columns[:5]:  # Show first 5 columns
+            print(f"   {col}: {X_test.iloc[0][col]} (type: {type(X_test.iloc[0][col])})")
         
-        # CRITICAL: Ensure EXACT same column order as training
+        # Check for required columns
         missing_cols = set(original_columns) - set(X_test.columns)
         extra_cols = set(X_test.columns) - set(original_columns)
+        print(f"🔍 DEBUG: Missing columns: {missing_cols}")
+        print(f"🔍 DEBUG: Extra columns: {extra_cols}")
         
         if missing_cols:
             print(f"❌ Missing columns: {missing_cols}")
             raise ValueError(f"Missing required columns: {missing_cols}")
         
-        if extra_cols:
-            print(f"⚠️  Extra columns will be dropped: {extra_cols}")
-            X_test = X_test[original_columns]
-        else:
-            # Reorder to match training data exactly
-            X_test = X_test[original_columns]
-        
+        # Reorder to match training data exactly
+        X_test = X_test[original_columns]
         print("✅ Columns reordered to match training data")
+        
+        # Continue with encoding and prediction...
         
         # CRITICAL FIX: Use EXACT same encoding as training
         for col in X_test.columns:
@@ -554,3 +557,4 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 port = int(os.environ.get("PORT", 10000))
 print(f"✅ Server ready on port {port}")
 app.run(host='0.0.0.0', port=port)
+
