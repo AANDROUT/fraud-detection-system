@@ -4,10 +4,6 @@ import numpy as np
 import os
 import joblib
 from werkzeug.utils import secure_filename
-from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import precision_recall_curve
-import xgboost as xgb
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads/'
@@ -16,29 +12,30 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 # Global variables for model and encoders
 model = None
 label_encoders = None
-optimal_threshold = None  # Store the optimal threshold
+optimal_threshold = None
+original_columns = None  # CRITICAL: Store original column order
 
 def load_model():
     """Load the pre-trained XGBoost model"""
-    global model, label_encoders, optimal_threshold
+    global model, label_encoders, optimal_threshold, original_columns
     
     try:
         # ALWAYS use pre-trained files - NO TRAINING
         model = joblib.load('fraud_model.pkl')
         label_encoders = joblib.load('label_encoders.pkl')
         optimal_threshold = joblib.load('optimal_threshold.pkl')
+        original_columns = joblib.load('original_columns.pkl')  # Load column order
+        
         print("✅ Pre-trained model loaded successfully")
-        print(f"🎯 Using threshold: {optimal_threshold} (92% recall, 77% precision)")
+        print(f"🎯 Using threshold: {optimal_threshold}")
+        print(f"📋 Original columns ({len(original_columns)}): {original_columns}")
     except Exception as e:
         print(f"❌ Error loading pre-trained model: {e}")
-        raise Exception("Pre-trained model files missing. Upload fraud_model.pkl, label_encoders.pkl, optimal_threshold.pkl")
-        train_and_save_model()
-
-
+        raise Exception("Pre-trained model files missing. Upload fraud_model.pkl, label_encoders.pkl, optimal_threshold.pkl, original_columns.pkl")
 
 def get_xgboost_predictions(test_df):
     """Get predictions from XGBoost model with PROPER encoding"""
-    global model, label_encoders, optimal_threshold
+    global model, label_encoders, optimal_threshold, original_columns
     
     if model is None:
         load_model()
@@ -54,6 +51,23 @@ def get_xgboost_predictions(test_df):
         
         print(f"📊 X_test shape before encoding: {X_test.shape}")
         print(f"🔍 Data types: {X_test.dtypes}")
+        
+        # CRITICAL: Ensure EXACT same column order as training
+        missing_cols = set(original_columns) - set(X_test.columns)
+        extra_cols = set(X_test.columns) - set(original_columns)
+        
+        if missing_cols:
+            print(f"❌ Missing columns: {missing_cols}")
+            raise ValueError(f"Missing required columns: {missing_cols}")
+        
+        if extra_cols:
+            print(f"⚠️  Extra columns will be dropped: {extra_cols}")
+            X_test = X_test[original_columns]
+        else:
+            # Reorder to match training data exactly
+            X_test = X_test[original_columns]
+        
+        print("✅ Columns reordered to match training data")
         
         # CRITICAL FIX: Use EXACT same encoding as training
         for col in X_test.columns:
@@ -73,19 +87,17 @@ def get_xgboost_predictions(test_df):
         
         print(f"📊 X_test shape after encoding: {X_test.shape}")
         
-        # Ensure all training columns are present
+        # Ensure all training columns are present (double check)
         if hasattr(model, 'get_booster'):
             expected_features = model.get_booster().feature_names
-            
-            missing_cols = set(expected_features) - set(X_test.columns)
-            for col in missing_cols:
-                X_test[col] = 0
-                print(f"➕ Added missing column: {col}")
-            
-            X_test = X_test[expected_features]
+            X_test = X_test[expected_features]  # Final reordering
         
         # Get predictions
         fraud_proba = model.predict_proba(X_test)[:, 1]
+        
+        # CRITICAL FIX: Use the OPTIMAL threshold from training (0.01)
+        threshold = optimal_threshold
+        print(f"🎯 Using OPTIMAL threshold from training: {threshold}")
         
         # ADD THIS DEBUG SECTION (PROPERLY INDENTED):
         if 'fraud' in test_df.columns:
@@ -97,7 +109,7 @@ def get_xgboost_predictions(test_df):
             print(f"   Fraud case probabilities - Min: {fraud_probabilities.min():.4f}")
             print(f"   Fraud case probabilities - Max: {fraud_probabilities.max():.4f}")
             print(f"   Fraud case probabilities - Mean: {fraud_probabilities.mean():.4f}")
-            print(f"   % of fraud cases above 0.01: {np.mean(fraud_probabilities > 0.01):.1%}")
+            print(f"   % of fraud cases above threshold ({threshold}): {np.mean(fraud_probabilities > threshold):.1%}")
             print(f"   % of fraud cases above 0.1: {np.mean(fraud_probabilities > 0.1):.1%}")
             print(f"   % of fraud cases above 0.5: {np.mean(fraud_probabilities > 0.5):.1%}")
         
@@ -112,9 +124,7 @@ def get_xgboost_predictions(test_df):
         print(f"   % > 0.9: {np.mean(fraud_proba > 0.9):.2%}")
         print(f"   % > 0.5: {np.mean(fraud_proba > 0.5):.2%}")
         print(f"   % > 0.1: {np.mean(fraud_proba > 0.1):.2%}")
-
-        # Use the OPTIMAL threshold from training (not arbitrary low threshold)
-        threshold = .0001
+        print(f"   % > threshold ({threshold}): {np.mean(fraud_proba > threshold):.2%}")
 
         # === ADD DEBUG CODE HERE ===
         print(f"🔍 DEBUG: About to check threshold {threshold}")
@@ -132,6 +142,7 @@ def get_xgboost_predictions(test_df):
             if 'fraud' in test_df.columns and test_df.iloc[i]['fraud'] == 1:
                 print(f"🔍 FRAUD CASE {i}: probability = {prob_float:.4f}, above threshold? {prob_float > threshold}")
             
+            # CRITICAL: Use optimal threshold, not hardcoded 0.0001
             if prob_float > threshold:
                 alerts.append({
                     'record_id': i,
@@ -151,7 +162,6 @@ def get_xgboost_predictions(test_df):
         import traceback
         traceback.print_exc()
         return [], []
-# ... [Keep all the other functions the same: create_individualized_justifications, validate_uploaded_data, upload_file, etc.]
 
 def create_individualized_justifications(df, alerts):
     """Create UNIQUE justifications for each alert based on actual feature values"""
@@ -358,13 +368,9 @@ def create_individualized_justifications(df, alerts):
         enhanced_alert['risk_factors'] = len(justifications)
         enhanced_alert['primary_risk_factor'] = justifications[0]['category'] if justifications else 'UNKNOWN'
         
-        # Boost confidence based on strongest justification
-        if justifications:
-            max_strength = max(j['strength'] for j in justifications)
-            confidence_boost = min(0.3, max_strength * 0.4)
-            enhanced_alert['adjusted_confidence'] = min(0.99, probability + confidence_boost)
-        else:
-            enhanced_alert['adjusted_confidence'] = probability
+        # CRITICAL FIX: Don't adjust confidence - this affects precision/recall
+        # Justifications are for display only, don't change the actual prediction
+        enhanced_alert['adjusted_confidence'] = probability  # Keep original probability
         
         enhanced_alerts.append(enhanced_alert)
     
@@ -438,7 +444,7 @@ def upload_file():
             
             print("✅ All required columns present!")
             
-            # FIXED Data cleaning (proper indentation)
+            # Data cleaning
             print("🧹 Cleaning data...")
             for col in df.columns:
                 if df[col].dtype == 'object':
@@ -483,8 +489,8 @@ def upload_file():
             # Format alerts for frontend
             alerts_data = []
             for alert in enhanced_alerts[:50]:
-                # Use adjusted confidence if available
-                confidence_decimal = float(alert.get('adjusted_confidence', alert['fraud_probability']))
+                # Use ORIGINAL probability (not adjusted) - critical for consistent metrics
+                confidence_decimal = float(alert['fraud_probability'])
                 
                 alert_data = {
                     'record_id': int(alert['record_id']),
@@ -548,12 +554,3 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 port = int(os.environ.get("PORT", 10000))
 print(f"✅ Server ready on port {port}")
 app.run(host='0.0.0.0', port=port)
-
-
-
-
-
-
-
-
-
