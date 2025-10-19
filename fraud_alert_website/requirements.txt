@@ -4,4 +4,5 @@ numpy
 scikit-learn
 xgboost
 joblib
-werkzeug
+Werkzeug
+gunicorn
